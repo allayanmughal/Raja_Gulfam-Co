@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, ArrowRight, ShieldCheck, Award, Clock, Building2, AlertTriangle, Flame } from 'lucide-react';
+import { Calendar, ArrowRight, ShieldCheck, Award, Clock, Building2, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ThreeCanvas } from './ThreeCanvas';
 import type { Region } from '../types';

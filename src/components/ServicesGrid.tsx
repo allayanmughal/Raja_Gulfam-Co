@@ -6,12 +6,6 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck,
-  Scale,
-  Calculator,
-  Building2,
-  Search,
-  Database,
   CheckCircle2,
   Sparkles,
   FileCheck
@@ -162,11 +156,11 @@ export const ServicesGrid: React.FC<ServicesGridProps> = ({
               <Sparkles className="w-3.5 h-3.5" />
               <span>Practice Divisions</span>
             </div>
-            
+
             <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
               Our Core Accounting & Legal Practice Areas
             </h2>
-            
+
             <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
               Comprehensive financial management, statutory audit compliance, and corporate legal representation across Pakistan, UK, US, and Gulf regulatory frameworks.
             </p>
@@ -253,7 +247,7 @@ export const ServicesGrid: React.FC<ServicesGridProps> = ({
 
                       {/* Onur Gür Style Mock Interactive UI Component Widget */}
                       <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800/80 shadow-md space-y-3">
-                        
+
                         {/* Widget Header */}
                         <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800/80 pb-2">
                           <div className="flex items-center gap-1.5">
