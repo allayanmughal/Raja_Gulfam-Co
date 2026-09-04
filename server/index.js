@@ -101,13 +101,13 @@ function requireAuth(req, res, next) {
 // --- AUTHENTICATION ROUTES ---
 
 // POST /api/auth/login
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'Username/Email and password are required.' });
   }
 
-  const admin = db.getAdminByUsername(username);
+  const admin = await db.getAdminByUsername(username);
   if (!admin) {
     return res.status(401).json({ error: 'Invalid email/username or password.' });
   }
@@ -123,10 +123,11 @@ app.post('/api/auth/login', (req, res) => {
     { expiresIn: '8h' }
   );
 
+  const isProd = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
   res.cookie('admin_session', token, {
     httpOnly: true,
-    secure: false, // set to true in HTTPS production
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     path: '/',
     maxAge: 8 * 60 * 60 * 1000 // 8 hours
   });
@@ -140,7 +141,12 @@ app.post('/api/auth/login', (req, res) => {
 
 // POST /api/auth/logout
 app.post('/api/auth/logout', (_req, res) => {
-  res.clearCookie('admin_session', { path: '/' });
+  const isProd = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
+  res.clearCookie('admin_session', {
+    path: '/',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax'
+  });
   return res.json({ success: true, message: 'Logged out successfully.' });
 });
 
@@ -162,9 +168,9 @@ app.get('/api/auth/me', (req, res) => {
 // --- PUBLIC FRONTEND API ---
 
 // GET /api/events
-app.get('/api/events', (_req, res) => {
+app.get('/api/events', async (_req, res) => {
   try {
-    const events = db.getPublishedEvents();
+    const events = await db.getPublishedEvents();
     return res.json({ success: true, events });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch published events.' });
@@ -174,9 +180,9 @@ app.get('/api/events', (_req, res) => {
 // --- PROTECTED ADMIN APIS ---
 
 // GET /api/admin/events
-app.get('/api/admin/events', requireAuth, (_req, res) => {
+app.get('/api/admin/events', requireAuth, async (_req, res) => {
   try {
-    const events = db.getAllEvents();
+    const events = await db.getAllEvents();
     return res.json({ success: true, events });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch admin events.' });
@@ -184,14 +190,14 @@ app.get('/api/admin/events', requireAuth, (_req, res) => {
 });
 
 // POST /api/admin/events
-app.post('/api/admin/events', requireAuth, (req, res) => {
+app.post('/api/admin/events', requireAuth, async (req, res) => {
   try {
     const { title, priorityDetail, description, images, date, template, published } = req.body;
     if (!title || !priorityDetail || !description) {
       return res.status(400).json({ error: 'Title, High-Priority Detail, and Description are required.' });
     }
 
-    const newEvent = db.createEvent({
+    const newEvent = await db.createEvent({
       title,
       priorityDetail,
       description,
@@ -208,9 +214,9 @@ app.post('/api/admin/events', requireAuth, (req, res) => {
 });
 
 // PUT /api/admin/events/:id
-app.put('/api/admin/events/:id', requireAuth, (req, res) => {
+app.put('/api/admin/events/:id', requireAuth, async (req, res) => {
   try {
-    const updated = db.updateEvent(req.params.id, req.body);
+    const updated = await db.updateEvent(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Event not found.' });
     }
@@ -221,9 +227,9 @@ app.put('/api/admin/events/:id', requireAuth, (req, res) => {
 });
 
 // DELETE /api/admin/events/:id
-app.delete('/api/admin/events/:id', requireAuth, (req, res) => {
+app.delete('/api/admin/events/:id', requireAuth, async (req, res) => {
   try {
-    const deleted = db.deleteEvent(req.params.id);
+    const deleted = await db.deleteEvent(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Event not found.' });
     }
@@ -247,6 +253,10 @@ app.post('/api/admin/upload', requireAuth, upload.array('images', 10), (req, res
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`[RGC Server] Express server running on port ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`[RGC Server] Express server running on port ${PORT}`);
+  });
+}
+
+export default app;

@@ -12,10 +12,6 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
 const INITIAL_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@rajagulfam.com';
 const INITIAL_ADMIN_PASSWORD = process.env.ADMIN_INITIAL_PASSWORD || 'admin123';
 
@@ -109,81 +105,217 @@ const defaultSeedEvents = [
   }
 ];
 
-function readData() {
-  if (!fs.existsSync(DB_FILE)) {
-    const salt = bcrypt.genSaltSync(10);
-    const passwordHash = bcrypt.hashSync(INITIAL_ADMIN_PASSWORD, salt);
-    
-    const initialData = {
-      admins: [
-        {
-          id: "admin-1",
-          username: INITIAL_ADMIN_EMAIL,
-          passwordHash: passwordHash,
-          createdAt: new Date().toISOString()
-        }
-      ],
-      events: defaultSeedEvents
-    };
-    
-    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf8');
-    return initialData;
-  }
-
+let sqlClient = null;
+if (process.env.DATABASE_URL) {
   try {
-    const raw = fs.readFileSync(DB_FILE, 'utf8');
-    return JSON.parse(raw);
+    const { neon } = await import('@neondatabase/serverless');
+    sqlClient = neon(process.env.DATABASE_URL);
   } catch (err) {
-    console.error("Error reading database file, recreating...", err);
-    const salt = bcrypt.genSaltSync(10);
-    const passwordHash = bcrypt.hashSync(INITIAL_ADMIN_PASSWORD, salt);
-    const fallbackData = {
-      admins: [
-        {
-          id: "admin-1",
-          username: INITIAL_ADMIN_EMAIL,
-          passwordHash: passwordHash,
-          createdAt: new Date().toISOString()
-        }
-      ],
-      events: defaultSeedEvents
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(fallbackData, null, 2), 'utf8');
-    return fallbackData;
+    console.warn("Neon DB package not available or initialization failed. Falling back to local/in-memory storage.", err);
   }
 }
 
-function writeData(data) {
-  const tempFile = `${DB_FILE}.tmp`;
-  fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf8');
-  fs.renameSync(tempFile, DB_FILE);
+// In-Memory state fallback for read/write when file system is read-only (e.g. Vercel without DATABASE_URL)
+let memoryStore = null;
+
+function getInitialData() {
+  const salt = bcrypt.genSaltSync(10);
+  const passwordHash = bcrypt.hashSync(INITIAL_ADMIN_PASSWORD, salt);
+  return {
+    admins: [
+      {
+        id: "admin-1",
+        username: INITIAL_ADMIN_EMAIL,
+        passwordHash: passwordHash,
+        createdAt: new Date().toISOString()
+      }
+    ],
+    events: [...defaultSeedEvents]
+  };
 }
+
+function readLocalData() {
+  if (memoryStore) return memoryStore;
+
+  if (fs.existsSync(DB_FILE)) {
+    try {
+      const raw = fs.readFileSync(DB_FILE, 'utf8');
+      memoryStore = JSON.parse(raw);
+      return memoryStore;
+    } catch (err) {
+      console.error("Error reading database file, resetting...", err);
+    }
+  }
+
+  memoryStore = getInitialData();
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(DB_FILE, JSON.stringify(memoryStore, null, 2), 'utf8');
+  } catch (err) {
+    // Ignore file write error on read-only serverless filesystems
+  }
+  return memoryStore;
+}
+
+function writeLocalData(data) {
+  memoryStore = data;
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const tempFile = `${DB_FILE}.tmp`;
+    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tempFile, DB_FILE);
+  } catch (err) {
+    // Ephemeral serverless fallback
+  }
+}
+
+async function initNeonTables() {
+  if (!sqlClient) return;
+  try {
+    await sqlClient`
+      CREATE TABLE IF NOT EXISTS admins (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+    await sqlClient`
+      CREATE TABLE IF NOT EXISTS events (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        priority_detail TEXT NOT NULL,
+        description TEXT NOT NULL,
+        images JSONB NOT NULL DEFAULT '[]'::jsonb,
+        date TEXT NOT NULL,
+        template TEXT NOT NULL DEFAULT 'template1',
+        published BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    // Seed admin if not present
+    const existingAdmins = await sqlClient`SELECT id FROM admins LIMIT 1`;
+    if (existingAdmins.length === 0) {
+      const salt = bcrypt.genSaltSync(10);
+      const passwordHash = bcrypt.hashSync(INITIAL_ADMIN_PASSWORD, salt);
+      await sqlClient`
+        INSERT INTO admins (id, username, password_hash)
+        VALUES (${'admin-1'}, ${INITIAL_ADMIN_EMAIL}, ${passwordHash});
+      `;
+    }
+
+    // Seed default events if empty
+    const existingEvents = await sqlClient`SELECT id FROM events LIMIT 1`;
+    if (existingEvents.length === 0) {
+      for (const evt of defaultSeedEvents) {
+        await sqlClient`
+          INSERT INTO events (id, title, priority_detail, description, images, date, template, published, created_at, updated_at)
+          VALUES (
+            ${evt.id},
+            ${evt.title},
+            ${evt.priorityDetail},
+            ${evt.description},
+            ${JSON.stringify(evt.images)},
+            ${evt.date},
+            ${evt.template},
+            ${evt.published},
+            ${evt.createdAt},
+            ${evt.updatedAt}
+          );
+        `;
+      }
+    }
+  } catch (err) {
+    console.error("Neon DB Init Error:", err);
+  }
+}
+
+let neonInitialized = false;
 
 export const db = {
-  getAdminByUsername(username) {
-    const data = readData();
-    return data.admins.find(a => a.username.toLowerCase() === username.toLowerCase());
+  async getAdminByUsername(username) {
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        const rows = await sqlClient`
+          SELECT id, username, password_hash AS "passwordHash", created_at AS "createdAt"
+          FROM admins
+          WHERE LOWER(username) = LOWER(${username})
+          LIMIT 1
+        `;
+        return rows[0] || null;
+      } catch (err) {
+        console.error("Neon Query Error (getAdminByUsername):", err);
+      }
+    }
+
+    const data = readLocalData();
+    return data.admins.find(a => a.username.toLowerCase() === username.toLowerCase()) || null;
   },
 
-  getAllEvents() {
-    const data = readData();
+  async getAllEvents() {
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        const rows = await sqlClient`
+          SELECT id, title, priority_detail AS "priorityDetail", description, images, date, template, published, created_at AS "createdAt", updated_at AS "updatedAt"
+          FROM events
+          ORDER BY created_at DESC
+        `;
+        return rows.map(r => ({
+          ...r,
+          images: typeof r.images === 'string' ? JSON.parse(r.images) : r.images
+        }));
+      } catch (err) {
+        console.error("Neon Query Error (getAllEvents):", err);
+      }
+    }
+
+    const data = readLocalData();
     return data.events.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   },
 
-  getPublishedEvents() {
-    const data = readData();
+  async getPublishedEvents() {
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        const rows = await sqlClient`
+          SELECT id, title, priority_detail AS "priorityDetail", description, images, date, template, published, created_at AS "createdAt", updated_at AS "updatedAt"
+          FROM events
+          WHERE published = true
+          ORDER BY date DESC
+        `;
+        return rows.map(r => ({
+          ...r,
+          images: typeof r.images === 'string' ? JSON.parse(r.images) : r.images
+        }));
+      } catch (err) {
+        console.error("Neon Query Error (getPublishedEvents):", err);
+      }
+    }
+
+    const data = readLocalData();
     return data.events
       .filter(e => e.published)
       .sort((a, b) => new Date(b.date) - new Date(a.date));
   },
 
-  getEventById(id) {
-    const data = readData();
-    return data.events.find(e => e.id === id);
-  },
-
-  createEvent(eventInput) {
-    const data = readData();
+  async createEvent(eventInput) {
     const now = new Date().toISOString();
     const newEvent = {
       id: `evt-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -198,13 +330,81 @@ export const db = {
       updatedAt: now
     };
 
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        await sqlClient`
+          INSERT INTO events (id, title, priority_detail, description, images, date, template, published, created_at, updated_at)
+          VALUES (
+            ${newEvent.id},
+            ${newEvent.title},
+            ${newEvent.priorityDetail},
+            ${newEvent.description},
+            ${JSON.stringify(newEvent.images)},
+            ${newEvent.date},
+            ${newEvent.template},
+            ${newEvent.published},
+            ${newEvent.createdAt},
+            ${newEvent.updatedAt}
+          );
+        `;
+        return newEvent;
+      } catch (err) {
+        console.error("Neon Query Error (createEvent):", err);
+      }
+    }
+
+    const data = readLocalData();
     data.events.unshift(newEvent);
-    writeData(data);
+    writeLocalData(data);
     return newEvent;
   },
 
-  updateEvent(id, eventInput) {
-    const data = readData();
+  async updateEvent(id, eventInput) {
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        const existingRows = await sqlClient`SELECT * FROM events WHERE id = ${id} LIMIT 1`;
+        if (existingRows.length === 0) return null;
+        const existing = existingRows[0];
+
+        const updated = {
+          title: eventInput.title !== undefined ? eventInput.title : existing.title,
+          priorityDetail: eventInput.priorityDetail !== undefined ? eventInput.priorityDetail : existing.priority_detail,
+          description: eventInput.description !== undefined ? eventInput.description : existing.description,
+          images: Array.isArray(eventInput.images) ? eventInput.images : existing.images,
+          date: eventInput.date !== undefined ? eventInput.date : existing.date,
+          template: eventInput.template !== undefined ? eventInput.template : existing.template,
+          published: eventInput.published !== undefined ? Boolean(eventInput.published) : existing.published,
+          updatedAt: new Date().toISOString()
+        };
+
+        await sqlClient`
+          UPDATE events
+          SET title = ${updated.title},
+              priority_detail = ${updated.priorityDetail},
+              description = ${updated.description},
+              images = ${JSON.stringify(updated.images)},
+              date = ${updated.date},
+              template = ${updated.template},
+              published = ${updated.published},
+              updated_at = ${updated.updatedAt}
+          WHERE id = ${id};
+        `;
+
+        return { id, ...updated };
+      } catch (err) {
+        console.error("Neon Query Error (updateEvent):", err);
+      }
+    }
+
+    const data = readLocalData();
     const index = data.events.findIndex(e => e.id === id);
     if (index === -1) return null;
 
@@ -222,17 +422,30 @@ export const db = {
     };
 
     data.events[index] = updated;
-    writeData(data);
+    writeLocalData(data);
     return updated;
   },
 
-  deleteEvent(id) {
-    const data = readData();
+  async deleteEvent(id) {
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        const result = await sqlClient`DELETE FROM events WHERE id = ${id} RETURNING id`;
+        return result.length > 0;
+      } catch (err) {
+        console.error("Neon Query Error (deleteEvent):", err);
+      }
+    }
+
+    const data = readLocalData();
     const index = data.events.findIndex(e => e.id === id);
     if (index === -1) return false;
 
     data.events.splice(index, 1);
-    writeData(data);
+    writeLocalData(data);
     return true;
   }
 };
