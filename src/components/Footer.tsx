@@ -1,9 +1,10 @@
 import React from 'react';
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, ShieldCheck } from 'lucide-react';
+import type { PageView } from '../types';
 
 interface FooterProps {
   onOpenBooking: () => void;
-  onNavigate: (page: 'home' | 'faqs' | 'team') => void;
+  onNavigate: (page: PageView) => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
@@ -32,8 +33,13 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           <button onClick={() => onNavigate('home')} className="hover:text-blue-600 dark:hover:text-blue-400">Home</button>
           <button onClick={() => onNavigate('faqs')} className="hover:text-blue-600 dark:hover:text-blue-400 text-blue-600 dark:text-blue-400 font-semibold">FAQs</button>
           <button onClick={() => onNavigate('team')} className="hover:text-blue-600 dark:hover:text-blue-400 text-blue-600 dark:text-blue-400 font-semibold">Team Members</button>
-          <button onClick={() => onNavigate('home')} className="hover:text-blue-600 dark:hover:text-blue-400">Services</button>
-          <button onClick={() => onNavigate('home')} className="hover:text-blue-600 dark:hover:text-blue-400">Tax Estimator</button>
+          <button 
+            onClick={() => onNavigate('admin')} 
+            className="hover:text-blue-600 dark:hover:text-blue-400 text-slate-600 dark:text-slate-400 font-bold flex items-center gap-1 bg-slate-100 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
+            <span>Admin Portal</span>
+          </button>
           
           <button
             onClick={scrollToTop}

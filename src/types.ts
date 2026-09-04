@@ -1,4 +1,5 @@
 export type Region = 'PK' | 'UK' | 'USA' | 'GULF' | 'GLOBAL';
+export type PageView = 'home' | 'faqs' | 'team' | 'admin';
 
 export interface ServiceItem {
   id: string;

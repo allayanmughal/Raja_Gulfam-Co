@@ -1,0 +1,26 @@
+{
+  "admins": [
+    {
+      "id": "admin-1",
+      "username": "admin@rajagulfam.com",
+      "passwordHash": "$2b$10$Yzs4L6Klgl3m9oDmHYgOtOpc.5jAXYIyI6loMpAyqvnWvfFcYJvoW",
+      "createdAt": "2026-09-02T08:52:26.122Z"
+    }
+  ],
+  "events": [
+    {
+      "id": "evt-1788341369158-yi4x",
+      "title": "New Tax Information Released",
+      "priorityDetail": "Pay Your Taxes ASAP",
+      "description": "SO WHAT HAPPENED IS THAT YOU HAVE TO PAY YOUR TAXES AND  THIS IS JUTS FOR TESTING PURPOSES AND ALSO YOU HAVE TO DO IT NOW.",
+      "images": [
+        "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=1200"
+      ],
+      "date": "2026-09-02",
+      "template": "template2",
+      "published": true,
+      "createdAt": "2026-09-02T09:29:29.158Z",
+      "updatedAt": "2026-09-02T09:30:24.665Z"
+    }
+  ]
+}

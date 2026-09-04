@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { ChevronDown, Menu, X, HelpCircle, Users, Sun, Moon } from 'lucide-react';
 import type { Region } from '../types';
 import { useTheme } from '../context/ThemeContext';
+import type { PageView } from '../types';
 
 interface HeaderProps {
   onOpenBooking: () => void;
   selectedRegion?: Region;
   onSelectRegion?: (region: Region) => void;
-  onNavigate: (page: 'home' | 'faqs' | 'team') => void;
-  currentPage: 'home' | 'faqs' | 'team';
+  onNavigate: (page: PageView) => void;
+  currentPage: PageView;
   onScrollToServices?: () => void;
   onScrollToNews?: () => void;
 }
