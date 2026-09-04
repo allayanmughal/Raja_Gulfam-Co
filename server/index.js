@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import os from 'os';
 import { db } from './db.js';
 
 dotenv.config();
@@ -19,10 +20,17 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'rgc_super_secret_jwt_key_2026_production_secure';
 
-// Ensure public/uploads directory exists
-const UPLOADS_DIR = path.join(__dirname, '..', 'public', 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// Ensure public/uploads directory exists (using os.tmpdir on serverless Vercel)
+const UPLOADS_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'uploads')
+  : path.join(__dirname, '..', 'public', 'uploads');
+
+try {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn('[RGC Server] Uploads directory creation warning:', err.message);
 }
 
 // Multer storage configuration

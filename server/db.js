@@ -1,15 +1,19 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { neon } from '@neondatabase/serverless';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.VERCEL
+  ? os.tmpdir()
+  : path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
 
 const INITIAL_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@rajagulfam.com';
@@ -108,10 +112,9 @@ const defaultSeedEvents = [
 let sqlClient = null;
 if (process.env.DATABASE_URL) {
   try {
-    const { neon } = await import('@neondatabase/serverless');
     sqlClient = neon(process.env.DATABASE_URL);
   } catch (err) {
-    console.warn("Neon DB package not available or initialization failed. Falling back to local/in-memory storage.", err);
+    console.warn("Neon DB client initialization failed. Falling back to in-memory storage.", err);
   }
 }
 
@@ -137,14 +140,14 @@ function getInitialData() {
 function readLocalData() {
   if (memoryStore) return memoryStore;
 
-  if (fs.existsSync(DB_FILE)) {
-    try {
+  try {
+    if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf8');
       memoryStore = JSON.parse(raw);
       return memoryStore;
-    } catch (err) {
-      console.error("Error reading database file, resetting...", err);
     }
+  } catch (err) {
+    console.warn("Could not read DB_FILE, using initial data fallback:", err.message);
   }
 
   memoryStore = getInitialData();
@@ -154,7 +157,7 @@ function readLocalData() {
     }
     fs.writeFileSync(DB_FILE, JSON.stringify(memoryStore, null, 2), 'utf8');
   } catch (err) {
-    // Ignore file write error on read-only serverless filesystems
+    // Read-only serverless environment safe fallback
   }
   return memoryStore;
 }
@@ -169,7 +172,7 @@ function writeLocalData(data) {
     fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf8');
     fs.renameSync(tempFile, DB_FILE);
   } catch (err) {
-    // Ephemeral serverless fallback
+    // Read-only serverless environment safe fallback
   }
 }
 
