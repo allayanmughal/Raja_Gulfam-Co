@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import type { EventItem, EventTemplateType, CreateEventInput } from '../../types/event';
+import type { EventItem, CreateEventInput } from '../../types/event';
 import { TemplateSelector } from './TemplateSelector';
-import { 
-  LogOut, Plus, Edit2, Trash2, Eye, EyeOff, Search, Calendar, 
+import {
+  LogOut, Plus, Edit2, Trash2, Eye, EyeOff, Search,
   CheckCircle, FileText, Layout, Upload, X, AlertCircle, RefreshCw,
   Sparkles, ShieldCheck
 } from 'lucide-react';
@@ -17,7 +17,7 @@ interface Props {
 export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNavigateHome }) => {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'published' | 'drafts'>('all');
 
@@ -252,10 +252,10 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pt-20 pb-16 px-4 sm:px-8">
-      
+
       {/* Top Navbar Bar */}
       <div className="max-w-7xl mx-auto space-y-8">
-        
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center font-heading font-extrabold text-xl shadow-inner">
@@ -334,7 +334,7 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
 
         {/* Action Bar & Filtering Tabs */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900 border border-slate-800">
-          
+
           {/* Tabs */}
           <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
             <button
@@ -409,7 +409,7 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
                 <tbody className="divide-y divide-slate-800/60">
                   {filteredEvents.map((evt) => (
                     <tr key={evt.id} className="hover:bg-slate-800/40 transition-colors">
-                      
+
                       {/* Event Title & Red Priority Detail */}
                       <td className="py-4 px-6 space-y-1">
                         <h4 className="font-bold text-sm text-white">{evt.title}</h4>
@@ -435,11 +435,10 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
                       <td className="py-4 px-4 whitespace-nowrap">
                         <button
                           onClick={() => handleTogglePublish(evt)}
-                          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1 border transition-all ${
-                            evt.published 
-                              ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800 hover:bg-emerald-900' 
+                          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1 border transition-all ${evt.published
+                              ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800 hover:bg-emerald-900'
                               : 'bg-amber-950/80 text-amber-400 border-amber-800 hover:bg-amber-900'
-                          }`}
+                            }`}
                         >
                           {evt.published ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                           <span>{evt.published ? 'Published' : 'Draft'}</span>
@@ -510,7 +509,7 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
               )}
 
               <form onSubmit={handleSaveEvent} className="space-y-6">
-                
+
                 {/* Title & Date Row */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="sm:col-span-2 space-y-1.5">
@@ -595,12 +594,12 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
                     <label className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-950 border-2 border-dashed border-slate-800 hover:border-blue-500 cursor-pointer transition-colors text-xs text-slate-300 font-bold">
                       <Upload className="w-4 h-4 text-blue-400" />
                       <span>{uploadingImage ? 'Uploading Image...' : 'Upload Image File(s)'}</span>
-                      <input 
-                        type="file" 
-                        multiple 
+                      <input
+                        type="file"
+                        multiple
                         accept="image/*"
-                        onChange={handleFileUpload} 
-                        className="hidden" 
+                        onChange={handleFileUpload}
+                        className="hidden"
                         disabled={uploadingImage}
                       />
                     </label>
@@ -660,11 +659,10 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, published: !formData.published })}
-                    className={`px-4 py-2 rounded-full text-xs font-extrabold transition-all border ${
-                      formData.published 
-                        ? 'bg-emerald-600 text-white border-emerald-500' 
+                    className={`px-4 py-2 rounded-full text-xs font-extrabold transition-all border ${formData.published
+                        ? 'bg-emerald-600 text-white border-emerald-500'
                         : 'bg-slate-800 text-slate-400 border-slate-700'
-                    }`}
+                      }`}
                   >
                     {formData.published ? 'Published (Live)' : 'Draft (Hidden)'}
                   </button>

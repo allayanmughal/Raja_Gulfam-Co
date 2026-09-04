@@ -1,7 +1,6 @@
 import React from 'react';
 import type { EventTemplateType, TemplateDefinition } from '../../types/event';
-import { Layout, Check, Sparkles, AlertCircle } from 'lucide-react';
-
+import { Layout, Check } from 'lucide-react';
 interface Props {
   selectedTemplate: EventTemplateType;
   onChange: (template: EventTemplateType) => void;
@@ -66,11 +65,10 @@ export const TemplateSelector: React.FC<Props> = ({ selectedTemplate, onChange }
             <div
               key={tmpl.id}
               onClick={() => onChange(tmpl.id)}
-              className={`relative rounded-2xl p-4 cursor-pointer transition-all duration-300 border-2 flex flex-col justify-between ${
-                isSelected
+              className={`relative rounded-2xl p-4 cursor-pointer transition-all duration-300 border-2 flex flex-col justify-between ${isSelected
                   ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 shadow-md ring-2 ring-blue-500/20'
                   : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
-              }`}
+                }`}
             >
               {/* Checkmark Indicator */}
               {isSelected && (
@@ -82,7 +80,7 @@ export const TemplateSelector: React.FC<Props> = ({ selectedTemplate, onChange }
               {/* Mini Visual Preview Wireframe */}
               <div className="mb-3 space-y-2">
                 <div className="h-20 w-full rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 p-2 overflow-hidden flex flex-col justify-between relative">
-                  
+
                   {/* Template 1 Mini */}
                   {tmpl.id === 'template1' && (
                     <div className="space-y-1.5 h-full flex flex-col">
