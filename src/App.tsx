@@ -31,29 +31,51 @@ export function App() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
 
-  const checkAuthStatus = async () => {
-    setAuthChecking(true);
+  const clearAuthState = () => {
+    setIsAuthenticated(false);
+    setAdminEmail('');
+    setAdminId('');
+    setIsSuperAdmin(false);
+  };
+
+  // `silent` re-validates without flashing the full-screen loader, so it is
+  // safe to run whenever the admin tab regains focus.
+  const checkAuthStatus = async (silent = false) => {
+    if (!silent) setAuthChecking(true);
     try {
       const res = await fetch('/api/auth/me', { credentials: 'include' });
       const data = await res.json();
-      if (data.authenticated) {
+      if (res.ok && data.authenticated) {
         setIsAuthenticated(true);
         setAdminEmail(data.admin?.username || 'Admin');
         setAdminId(data.admin?.id || '');
         setIsSuperAdmin(Boolean(data.admin?.isSuper));
       } else {
-        setIsAuthenticated(false);
-        setAdminEmail('');
-        setAdminId('');
-        setIsSuperAdmin(false);
+        clearAuthState();
       }
     } catch (err) {
-      setIsAuthenticated(false);
-      setAdminId('');
-      setIsSuperAdmin(false);
+      clearAuthState();
     } finally {
-      setAuthChecking(false);
+      if (!silent) setAuthChecking(false);
     }
+  };
+
+  // Logout must revoke the session on the server, not just hide the dashboard.
+  // Clearing local state alone left the 8-hour `admin_session` cookie alive,
+  // which is why Ctrl+Shift+A walked straight back into the panel.
+  const handleLogout = async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'include'
+        });
+        if (res.ok) break;
+      } catch (err) {
+        // Network hiccup — retry once, then fall through to local cleanup.
+      }
+    }
+    clearAuthState();
   };
 
   useEffect(() => {
@@ -63,7 +85,8 @@ export function App() {
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl + Shift + A or Cmd + Shift + A
+      // Ctrl + Shift + A or Cmd + Shift + A — navigation shortcut only; the
+      // server still rejects any request without a valid, unrevoked session.
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'a' || e.key === 'A')) {
         e.preventDefault();
         handleNavigate('admin');
@@ -73,6 +96,23 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // While the admin view is open, re-verify the session whenever the tab comes
+  // back into focus so a revoked session ends the dashboard immediately.
+  useEffect(() => {
+    if (currentPage !== 'admin') return;
+
+    const revalidate = () => {
+      if (!document.hidden) void checkAuthStatus(true);
+    };
+
+    window.addEventListener('focus', revalidate);
+    document.addEventListener('visibilitychange', revalidate);
+    return () => {
+      window.removeEventListener('focus', revalidate);
+      document.removeEventListener('visibilitychange', revalidate);
+    };
+  }, [currentPage]);
 
   const handleNavigate = (page: PageView) => {
     setCurrentPage(page);
@@ -206,12 +246,7 @@ export function App() {
                 adminEmail={adminEmail}
                 adminId={adminId}
                 isSuperAdmin={isSuperAdmin}
-                onLogout={() => {
-                  setIsAuthenticated(false);
-                  setAdminEmail('');
-                  setAdminId('');
-                  setIsSuperAdmin(false);
-                }}
+                onLogout={handleLogout}
                 onNavigateHome={() => handleNavigate('home')}
               />
             ) : (

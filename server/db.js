@@ -223,6 +223,9 @@ async function initNeonTables() {
     await sqlClient`ALTER TABLE admins ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`;
     await sqlClient`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE`;
     await sqlClient`ALTER TABLE admins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`;
+    // Server-side session revocation: every token carries the version it was
+    // issued at, and logout bumps it so outstanding cookies die immediately.
+    await sqlClient`ALTER TABLE admins ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`;
 
     // The column-level UNIQUE on username is case-SENSITIVE, so it would happily
     // allow Foo@x.com and foo@x.com to coexist while the login lookup (which
@@ -305,10 +308,10 @@ async function ensureNeonReady() {
   return true;
 }
 
-/** Strip the password hash before an admin record ever leaves the server. */
+/** Strip secrets before an admin record ever leaves the server. */
 function toPublicAdmin(admin) {
   if (!admin) return null;
-  const { passwordHash, password_hash, ...rest } = admin;
+  const { passwordHash, password_hash, sessionVersion, session_version, ...rest } = admin;
   return rest;
 }
 
@@ -319,6 +322,7 @@ function normalizeAdmin(admin) {
     username: admin.username,
     role: admin.role || 'admin',
     isActive: admin.isActive !== false,
+    sessionVersion: Number(admin.sessionVersion || admin.session_version || 0),
     createdAt: admin.createdAt || null,
     updatedAt: admin.updatedAt || admin.createdAt || null,
     lastLoginAt: admin.lastLoginAt || null,
@@ -340,7 +344,8 @@ export const db = {
         const rows = await sqlClient`
           SELECT id, username, password_hash AS "passwordHash", role,
                  is_active AS "isActive", created_at AS "createdAt",
-                 updated_at AS "updatedAt", last_login_at AS "lastLoginAt"
+                 updated_at AS "updatedAt", last_login_at AS "lastLoginAt",
+                 session_version AS "sessionVersion"
           FROM admins
           WHERE LOWER(username) = LOWER(${username})
           LIMIT 1
@@ -381,7 +386,8 @@ export const db = {
         const rows = await sqlClient`
           SELECT id, username, password_hash AS "passwordHash", role,
                  is_active AS "isActive", created_at AS "createdAt",
-                 updated_at AS "updatedAt", last_login_at AS "lastLoginAt"
+                 updated_at AS "updatedAt", last_login_at AS "lastLoginAt",
+                 session_version AS "sessionVersion"
           FROM admins
           WHERE id = ${id}
           LIMIT 1
@@ -484,14 +490,22 @@ export const db = {
         const passwordHash =
           patch.password ? bcrypt.hashSync(patch.password, bcrypt.genSaltSync(10)) : existing.password_hash;
 
+        // Rotating credentials revokes every session issued to this account.
+        const credentialsChanged =
+          (patch.password !== undefined && patch.password !== '') ||
+          (patch.username !== undefined && patch.username !== existing.username);
+        const sessionVersion =
+          Number(existing.session_version || 0) + (credentialsChanged ? 1 : 0);
+
         const rows = await sqlClient`
           UPDATE admins
           SET username = ${username}, role = ${role}, is_active = ${isActive},
-              password_hash = ${passwordHash}, updated_at = ${now}
+              password_hash = ${passwordHash}, session_version = ${sessionVersion},
+              updated_at = ${now}
           WHERE id = ${id}
           RETURNING id, username, role, is_active AS "isActive",
                     created_at AS "createdAt", updated_at AS "updatedAt",
-                    last_login_at AS "lastLoginAt"
+                    last_login_at AS "lastLoginAt", session_version AS "sessionVersion"
         `;
         return rows[0] || null;
       } catch (err) {
@@ -517,6 +531,10 @@ export const db = {
       }
     }
 
+    const credentialsChanged =
+      (patch.password !== undefined && patch.password !== '') ||
+      (patch.username !== undefined && patch.username !== existing.username);
+
     data.admins[index] = {
       ...existing,
       username: patch.username !== undefined ? patch.username : existing.username,
@@ -525,6 +543,9 @@ export const db = {
       passwordHash: patch.password
         ? bcrypt.hashSync(patch.password, bcrypt.genSaltSync(10))
         : existing.passwordHash,
+      sessionVersion:
+        Number(existing.sessionVersion || existing.session_version || 0) +
+        (credentialsChanged ? 1 : 0),
       updatedAt: now,
     };
     writeLocalData(data);
@@ -568,6 +589,31 @@ export const db = {
       admin.updatedAt = admin.lastLoginAt;
       writeLocalData(data);
     }
+  },
+
+  /**
+   * Invalidate every outstanding session cookie for an admin. Called on logout
+   * so a token that was copied out of the browser dies with the session, not
+   * eight hours later.
+   */
+  async bumpAdminSessionVersion(id) {
+    // Mirror getAdminById/getAdminByUsername: if Neon is unreachable, keep the
+    // JSON store in step so reads and revocations agree with each other.
+    if (await ensureNeonReady()) {
+      try {
+        await sqlClient`UPDATE admins SET session_version = COALESCE(session_version, 0) + 1 WHERE id = ${id}`;
+        return true;
+      } catch (err) {
+        console.error("Neon Query Error (bumpAdminSessionVersion):", err);
+      }
+    }
+
+    const data = readLocalData();
+    const admin = data.admins.find((a) => a.id === id);
+    if (!admin) return false;
+    admin.sessionVersion = Number(admin.sessionVersion || admin.session_version || 0) + 1;
+    writeLocalData(data);
+    return true;
   },
 
   async getAllEvents() {

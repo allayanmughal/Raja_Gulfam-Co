@@ -10,7 +10,21 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'rgc_super_secret_jwt_key_2026_production_secure';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
+
+/**
+ * Never ship a working built-in secret: a hardcoded fallback lets anyone who
+ * reads the source mint a valid admin cookie. In production a missing
+ * JWT_SECRET is a hard failure; locally we fall back to a throwaway key.
+ */
+function getJwtSecret() {
+  const configured = process.env.JWT_SECRET && process.env.JWT_SECRET.trim();
+  if (configured) return configured;
+  if (IS_PRODUCTION) {
+    throw new Error('JWT_SECRET is not configured. Set it in the server environment before using admin auth.');
+  }
+  return 'rgc_local_development_only_jwt_secret';
+}
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -49,19 +63,65 @@ function isSuperAdmin(admin) {
 }
 
 // Authentication Middleware
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const token = req.cookies?.admin_session;
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized. Authentication session required.' });
   }
 
+  let secret;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.admin = decoded;
-    next();
+    secret = getJwtSecret();
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, secret);
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired session token.' });
   }
+
+  // Signature alone is not enough: re-check the account on every request so a
+  // deleted, deactivated, or signed-out admin can never ride an old cookie.
+  const check = await validateSession(decoded);
+  if (!check.ok) {
+    return res.status(check.status).json({ error: check.error });
+  }
+
+  req.admin = { ...decoded, isSuper: isSuperAdmin(decoded) };
+  next();
+}
+
+/**
+ * Confirms a decoded token still maps to a live, active, non-revoked account.
+ * Returns { ok: true } or { ok: false, status, error }.
+ */
+async function validateSession(decoded) {
+  if (!decoded || !decoded.id) {
+    return { ok: false, status: 401, error: 'Invalid or expired session token.' };
+  }
+
+  let admin;
+  try {
+    admin = await db.getAdminById(decoded.id);
+  } catch (err) {
+    console.error('Session validation failed:', err);
+    return { ok: false, status: 500, error: 'Could not validate the session. Please try again.' };
+  }
+
+  if (!admin) {
+    return { ok: false, status: 401, error: 'Session is no longer valid. Please sign in again.' };
+  }
+  if (admin.isActive === false) {
+    return { ok: false, status: 403, error: 'This account has been deactivated. Contact the owner.' };
+  }
+  if (Number(decoded.sv || 0) !== Number(admin.sessionVersion || 0)) {
+    return { ok: false, status: 401, error: 'Session has been revoked. Please sign in again.' };
+  }
+
+  return { ok: true, admin };
 }
 
 // Guards every admin-user management route. Runs after requireAuth.
@@ -165,17 +225,24 @@ app.post('/api/auth/login', async (req, res) => {
   clearLoginAttempts(key);
   await db.touchAdminLogin(admin.id);
 
+  // `sv` pins the token to the account's current session version so logout
+  // (or a credential change) invalidates it server-side immediately.
   const token = jwt.sign(
-    { id: admin.id, username: admin.username, role: admin.role || 'admin', isSuper: isSuperAdmin(admin) },
-    JWT_SECRET,
+    {
+      id: admin.id,
+      username: admin.username,
+      role: admin.role || 'admin',
+      isSuper: isSuperAdmin(admin),
+      sv: Number(admin.sessionVersion || 0)
+    },
+    getJwtSecret(),
     { expiresIn: '8h' }
   );
 
-  const isProd = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
   res.cookie('admin_session', token, {
     httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'none' : 'lax',
+    secure: IS_PRODUCTION,
+    sameSite: IS_PRODUCTION ? 'none' : 'lax',
     path: '/',
     maxAge: 8 * 60 * 60 * 1000 // 8 hours
   });
@@ -194,32 +261,53 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // POST /api/auth/logout
-app.post('/api/auth/logout', (_req, res) => {
-  const isProd = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
+// Revokes the session server-side first (so the token itself dies, not just
+// this browser's copy of it), then clears the cookie.
+app.post('/api/auth/logout', async (req, res) => {
+  const token = req.cookies?.admin_session;
+
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, getJwtSecret());
+      await db.bumpAdminSessionVersion(decoded.id);
+    } catch (err) {
+      // Expired, forged, or misconfigured secret: nothing left to revoke.
+    }
+  }
+
   res.clearCookie('admin_session', {
     path: '/',
-    secure: isProd,
-    sameSite: isProd ? 'none' : 'lax'
+    secure: IS_PRODUCTION,
+    sameSite: IS_PRODUCTION ? 'none' : 'lax'
   });
   return res.json({ success: true, message: 'Logged out successfully.' });
 });
 
 // GET /api/auth/me
-app.get('/api/auth/me', (req, res) => {
+app.get('/api/auth/me', async (req, res) => {
   const token = req.cookies?.admin_session;
   if (!token) {
     return res.json({ authenticated: false });
   }
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    return res.json({
-      authenticated: true,
-      admin: { ...decoded, isSuper: isSuperAdmin(decoded) }
-    });
+    decoded = jwt.verify(token, getJwtSecret());
   } catch (err) {
     return res.json({ authenticated: false });
   }
+
+  const check = await validateSession(decoded);
+  if (!check.ok) {
+    return res.json({ authenticated: false, error: check.error });
+  }
+
+  // Only expose what the UI needs — never the internal session claims.
+  const { sv, iat, exp, ...safeClaims } = decoded;
+  return res.json({
+    authenticated: true,
+    admin: { ...safeClaims, isSuper: isSuperAdmin(check.admin) }
+  });
 });
 
 // --- PUBLIC FRONTEND API ---
@@ -384,13 +472,14 @@ app.put('/api/admin/admins/:id', requireAuth, requireSuperAdmin, async (req, res
     const updated = await db.updateAdmin(id, patch);
     if (!updated) return res.status(404).json({ error: 'Admin user not found.' });
 
-    // Changing your own password or role invalidates the current session cookie.
+    // Changing your own password or username invalidates the current cookie
+    // (db.updateAdmin has already bumped the session version, which revokes
+    // every other outstanding session for this account as well).
     if (isSelf && (patch.password || patch.username)) {
-      const isProd = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
       res.clearCookie('admin_session', {
         path: '/',
-        secure: isProd,
-        sameSite: isProd ? 'none' : 'lax'
+        secure: IS_PRODUCTION,
+        sameSite: IS_PRODUCTION ? 'none' : 'lax'
       });
     }
 
@@ -455,11 +544,12 @@ app.post('/api/admin/admins/me/password', requireAuth, async (req, res) => {
 
     await db.updateAdmin(req.admin.id, { password: newPassword });
 
-    const isProd = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
+    // db.updateAdmin bumped the session version, so every session for this
+    // account is already revoked; drop this browser's cookie too.
     res.clearCookie('admin_session', {
       path: '/',
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax'
+      secure: IS_PRODUCTION,
+      sameSite: IS_PRODUCTION ? 'none' : 'lax'
     });
 
     return res.json({ success: true, message: 'Password updated. Please sign in again.' });
