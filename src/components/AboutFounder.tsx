@@ -72,11 +72,11 @@ export const AboutFounder: React.FC<AboutFounderProps> = ({ onOpenBooking }) => 
               </button>
 
               <a
-                href="tel:+923121850063"
+                href="tel:+923348972072"
                 className="px-6 py-3.5 rounded-2xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-xs border border-slate-200 dark:border-slate-800 transition-all flex items-center gap-2"
               >
                 <Phone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span>Call +92 312 1850063</span>
+                <span>Call +92 334 8972072</span>
               </a>
             </div>
           </motion.div>

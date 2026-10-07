@@ -72,13 +72,13 @@ export const ServiceModal: React.FC<ServiceModalProps> = ({
           {/* Business Value */}
           <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-white/5 space-y-3">
             <h4 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>Business Value & Savings</span>
             </h4>
             <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
               {service.benefits.map((ben, idx) => (
                 <li key={idx} className="flex items-start gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                   <span>{ben}</span>
                 </li>
               ))}

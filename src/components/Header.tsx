@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, Menu, X, HelpCircle, Users, Sun, Moon } from 'lucide-react';
+import { motion } from 'framer-motion';
 import type { Region } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import type { PageView } from '../types';
@@ -10,16 +11,12 @@ interface HeaderProps {
   onSelectRegion?: (region: Region) => void;
   onNavigate: (page: PageView) => void;
   currentPage: PageView;
-  onScrollToServices?: () => void;
-  onScrollToNews?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenBooking,
   onNavigate,
-  currentPage,
-  onScrollToServices,
-  onScrollToNews
+  currentPage
 }) => {
   const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -27,44 +24,22 @@ export const Header: React.FC<HeaderProps> = ({
   const [aboutDropdownOpen, setAboutDropdownOpen] = useState(false);
 
   const handleServicesClick = () => {
-    if (onScrollToServices) {
-      onScrollToServices();
-    } else {
-      if (currentPage !== 'home') {
-        onNavigate('home');
-        setTimeout(() => {
-          const el = document.getElementById('services');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-      } else {
-        const el = document.getElementById('services');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      }
-    }
+    // "Our Services" opens the dedicated full-catalog page (not the home section).
+    onNavigate('catalog');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleNewsClick = () => {
-    if (onScrollToNews) {
-      onScrollToNews();
-    } else {
-      if (currentPage !== 'home') {
-        onNavigate('home');
-        setTimeout(() => {
-          const el = document.getElementById('news') || document.getElementById('insights') || document.getElementById('calculator');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-      } else {
-        const el = document.getElementById('news') || document.getElementById('insights') || document.getElementById('calculator');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      }
-    }
+    // "News And Insights" now opens the dedicated all-news & events page.
+    onNavigate('news');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 py-2.5 px-4 sm:px-8 transition-all duration-300">
       
-      {/* Floating Centered Pill Navbar */}
-      <div className="max-w-7xl mx-auto rounded-2xl md:rounded-full px-6 py-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800/80 shadow-xl dark:shadow-2xl flex items-center justify-between transition-colors">
+      {/* Floating Centered Pill Navbar — glassmorphism */}
+      <div className="max-w-7xl mx-auto rounded-2xl md:rounded-full pl-3 pr-3 md:px-3 py-2 bg-white/55 dark:bg-slate-900/45 backdrop-blur-xl backdrop-saturate-150 text-slate-900 dark:text-white border border-white/70 dark:border-white/10 shadow-lg shadow-slate-900/5 dark:shadow-black/40 flex items-center justify-between transition-colors">
         
         {/* CG Logo Icon */}
         <button
@@ -96,16 +71,38 @@ export const Header: React.FC<HeaderProps> = ({
           
           <button
             onClick={handleNewsClick}
-            className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            className={`relative transition-colors ${
+              currentPage === 'news'
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'hover:text-blue-600 dark:hover:text-blue-400'
+            }`}
           >
             News And Insights
+            {currentPage === 'news' && (
+              <motion.span
+                layoutId="nav-underline"
+                className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-full"
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              />
+            )}
           </button>
 
           <button
             onClick={handleServicesClick}
-            className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            className={`relative transition-colors ${
+              currentPage === 'catalog'
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'hover:text-blue-600 dark:hover:text-blue-400'
+            }`}
           >
             Our Services
+            {currentPage === 'catalog' && (
+              <motion.span
+                layoutId="nav-underline"
+                className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-full"
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              />
+            )}
           </button>
 
           {/* Contact Us Dropdown */}
@@ -196,7 +193,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Consultation CTA Button */}
           <button
             onClick={onOpenBooking}
-            className="px-6 py-2.5 rounded-full bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-100 text-white dark:text-blue-600 font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95"
+            className="px-6 py-2.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/25 transition-all hover:scale-105 active:scale-95"
           >
             Get Consultation
           </button>
@@ -213,7 +210,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={onOpenBooking}
-            className="px-3.5 py-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-blue-600 font-bold text-xs"
+            className="px-3.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs"
           >
             Get Consultation
           </button>
@@ -227,7 +224,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Mobile Dropdown */}
       {mobileMenuOpen && (
-        <div className="lg:hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl p-6 space-y-4 mt-3 max-w-7xl mx-auto shadow-2xl">
+        <div className="lg:hidden bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border border-white/70 dark:border-white/10 text-slate-900 dark:text-white rounded-2xl p-6 space-y-4 mt-3 max-w-7xl mx-auto shadow-2xl">
           <button
             onClick={() => {
               setMobileMenuOpen(false);
@@ -265,7 +262,11 @@ export const Header: React.FC<HeaderProps> = ({
               setMobileMenuOpen(false);
               handleNewsClick();
             }}
-            className="block w-full text-left text-sm font-semibold border-b border-slate-100 dark:border-white/5 pb-2 hover:text-blue-600 dark:hover:text-blue-400"
+            className={`block w-full text-left text-sm font-semibold border-b border-slate-100 dark:border-white/5 pb-2 ${
+              currentPage === 'news'
+                ? 'text-blue-600 dark:text-blue-400'
+                : 'hover:text-blue-600 dark:hover:text-blue-400'
+            }`}
           >
             News And Insights
           </button>
@@ -275,7 +276,11 @@ export const Header: React.FC<HeaderProps> = ({
               setMobileMenuOpen(false);
               handleServicesClick();
             }}
-            className="block w-full text-left text-sm font-semibold border-b border-slate-100 dark:border-white/5 pb-2 hover:text-blue-600 dark:hover:text-blue-400"
+            className={`block w-full text-left text-sm font-semibold border-b border-slate-100 dark:border-white/5 pb-2 flex items-center gap-2 ${
+              currentPage === 'catalog'
+                ? 'text-blue-600 dark:text-blue-400'
+                : 'hover:text-blue-600 dark:hover:text-blue-400'
+            }`}
           >
             Our Services
           </button>
@@ -294,7 +299,7 @@ export const Header: React.FC<HeaderProps> = ({
                 setMobileMenuOpen(false);
                 onOpenBooking();
               }}
-              className="px-5 py-2.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-blue-600 font-bold text-xs"
+              className="px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/25"
             >
               Get Consultation
             </button>

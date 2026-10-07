@@ -67,7 +67,7 @@ export const ContactSection: React.FC = () => {
                   <Phone className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                   <div>
                     <h4 className="font-bold text-slate-900 dark:text-white">Phone & Helpline</h4>
-                    <p className="text-blue-600 dark:text-blue-400 font-bold text-xs mt-1">+92 312 1850063 / +92 334 8972072</p>
+                    <p className="text-blue-600 dark:text-blue-400 font-bold text-xs mt-1">+92 334 8972072</p>
                     <p className="text-slate-500 dark:text-slate-400 text-[11px]">Direct WhatsApp & Call</p>
                   </div>
                 </div>
@@ -84,13 +84,13 @@ export const ContactSection: React.FC = () => {
               </div>
 
               <a
-                href="https://wa.me/923121850063"
+                href="https://wa.me/923348972072"
                 target="_blank"
                 rel="noreferrer"
-                className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
+                className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
               >
                 <MessageSquare className="w-4 h-4" />
-                <span>Chat on WhatsApp (+92 312 1850063)</span>
+                <span>Chat on WhatsApp (+92 334 8972072)</span>
               </a>
             </div>
           </motion.div>
@@ -171,7 +171,7 @@ export const ContactSection: React.FC = () => {
                 </form>
               ) : (
                 <div className="text-center py-8 space-y-3">
-                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                  <CheckCircle2 className="w-10 h-10 text-blue-500 mx-auto" />
                   <h4 className="font-heading text-lg font-bold text-slate-900 dark:text-white">Inquiry Received!</h4>
                   <p className="text-xs text-slate-600 dark:text-slate-300">Thank you {formData.name}. Raja Gulfam & Co. will respond shortly.</p>
                 </div>

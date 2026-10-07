@@ -3,6 +3,24 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    /* Scale the entire rem-based design down ~6% so more content fits per
+       screen without changing any component. Raise to 14px for more, or set
+       back to 16px to disable. */
+    font-size: 15px;
+
+    /* The floating navbar is `position: fixed` and ~96px tall. Reserve that
+       space on the scrollport so anchor jumps and scrollIntoView() never land
+       a section heading underneath it. */
+    scroll-padding-top: 7rem;
+  }
+
+  /* Belt-and-braces for browsers/tools that use per-target scroll margin. */
+  section[id],
+  div[id] {
+    scroll-margin-top: 7rem;
+  }
+
   html.dark body {
     background-color: #020617;
     color: #f8fafc;
@@ -62,4 +80,79 @@ html.light .clean-card {
 
 .clean-card:hover {
   border-color: rgba(37, 99, 235, 0.4);
+}
+
+/* ---------------------------------------------------------------------------
+   Tax calendar — fit the whole section on one desktop screen
+
+   The section only becomes a two-column layout at 1024px, so every tightening
+   below is scoped to that breakpoint; phones and tablets keep the roomy
+   rhythm. Viewport *height* picks the tier, because the overflow is vertical.
+--------------------------------------------------------------------------- */
+@layer utilities {
+  @media (min-width: 1024px) {
+    .tc-compact {
+      --tc-section-pad: 2.5rem;
+      --tc-panel-pad: 1.75rem;
+      --tc-stack-gap: 1rem;
+      --tc-cell-gap: 0.75rem;
+      --tc-cell-pad: 1.25rem;
+      --tc-digit: 2.25rem;
+      --tc-card-gap: 0.75rem;
+      --tc-card-pad-x: 1rem;
+      --tc-card-pad-y: 1rem;
+
+      padding-top: var(--tc-section-pad);
+      padding-bottom: var(--tc-section-pad);
+    }
+
+    /* Shorter desktop windows get a second, tighter pass. */
+    @media (max-height: 880px) {
+      .tc-compact {
+        --tc-section-pad: 1.75rem;
+        --tc-panel-pad: 1.375rem;
+        --tc-stack-gap: 0.75rem;
+        --tc-cell-pad: 0.875rem;
+        --tc-digit: 2rem;
+        --tc-card-pad-y: 0.75rem;
+      }
+    }
+
+    @media (max-height: 760px) {
+      .tc-compact {
+        --tc-section-pad: 1.125rem;
+        --tc-panel-pad: 1rem;
+        --tc-stack-gap: 0.5rem;
+        --tc-cell-pad: 0.625rem;
+        --tc-digit: 1.75rem;
+        --tc-card-pad-y: 0.625rem;
+      }
+    }
+
+    .tc-panel {
+      padding: var(--tc-panel-pad);
+    }
+    .tc-panel > * + * {
+      margin-top: var(--tc-stack-gap);
+    }
+    .tc-panel-grid {
+      gap: var(--tc-cell-gap);
+    }
+    .tc-cell {
+      padding: var(--tc-cell-pad);
+    }
+    .tc-digit {
+      font-size: var(--tc-digit);
+      line-height: 1;
+    }
+    .tc-badge-group {
+      gap: 0.5rem;
+    }
+    .tc-badges > * + * {
+      margin-top: var(--tc-card-gap);
+    }
+    .tc-card {
+      padding: var(--tc-card-pad-x) var(--tc-card-pad-y);
+    }
+  }
 }

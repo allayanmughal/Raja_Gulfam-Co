@@ -1,313 +1,347 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { servicesData } from '../data/servicesData';
-import type { ServiceItem, Region } from '../types';
-import { ServiceModal } from './ServiceModal';
+﻿import React, { useEffect, useMemo, useState } from 'react';
+import type { CatalogItem, Region } from '../types';
+import { seedCatalogItems } from '../data/catalogSeed';
 import {
+  BookOpen,
   ArrowRight,
-  ChevronLeft,
-  ChevronRight,
+  Tag,
   CheckCircle2,
-  Sparkles,
-  FileCheck
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ServicesGridProps {
   onOpenBookingWithService: (serviceTitle: string) => void;
   selectedRegion: Region;
+  onNavigateCatalog?: () => void;
 }
 
-interface CardDesignTheme {
-  bgLight: string;
-  bgDark: string;
-  badgeBgLight: string;
-  badgeTextLight: string;
-  badgeBgDark: string;
-  badgeTextDark: string;
-  accentColor: string;
-}
+const FEATURED_COUNT = 3;
+const AUTO_ROTATE_MS = 7000;
 
-const getThemeForCategory = (category: string): CardDesignTheme => {
-  switch (category) {
-    case 'Audit':
-      return {
-        bgLight: 'bg-[#EBF3FC]',
-        bgDark: 'dark:bg-slate-900/90 dark:border-blue-900/40',
-        badgeBgLight: 'bg-blue-600/10 text-blue-700',
-        badgeTextLight: 'text-blue-700',
-        badgeBgDark: 'dark:bg-blue-950/60 dark:text-blue-400',
-        badgeTextDark: 'dark:text-blue-400',
-        accentColor: 'blue-600'
-      };
-    case 'Taxation':
-      return {
-        bgLight: 'bg-[#FFF8EB]',
-        bgDark: 'dark:bg-slate-900/90 dark:border-amber-900/40',
-        badgeBgLight: 'bg-amber-600/10 text-amber-700',
-        badgeTextLight: 'text-amber-700',
-        badgeBgDark: 'dark:bg-amber-950/60 dark:text-amber-400',
-        badgeTextDark: 'dark:text-amber-400',
-        accentColor: 'amber-600'
-      };
-    case 'Legal':
-      return {
-        bgLight: 'bg-[#FDF2F0]',
-        bgDark: 'dark:bg-slate-900/90 dark:border-rose-900/40',
-        badgeBgLight: 'bg-rose-600/10 text-rose-700',
-        badgeTextLight: 'text-rose-700',
-        badgeBgDark: 'dark:bg-rose-950/60 dark:text-rose-400',
-        badgeTextDark: 'dark:text-rose-400',
-        accentColor: 'rose-600'
-      };
-    case 'Forensic':
-      return {
-        bgLight: 'bg-[#F4EFFB]',
-        bgDark: 'dark:bg-slate-900/90 dark:border-purple-900/40',
-        badgeBgLight: 'bg-purple-600/10 text-purple-700',
-        badgeTextLight: 'text-purple-700',
-        badgeBgDark: 'dark:bg-purple-950/60 dark:text-purple-400',
-        badgeTextDark: 'dark:text-purple-400',
-        accentColor: 'purple-600'
-      };
-    case 'Accounting':
-      return {
-        bgLight: 'bg-[#ECF7F2]',
-        bgDark: 'dark:bg-slate-900/90 dark:border-emerald-900/40',
-        badgeBgLight: 'bg-emerald-600/10 text-emerald-700',
-        badgeTextLight: 'text-emerald-700',
-        badgeBgDark: 'dark:bg-emerald-950/60 dark:text-emerald-400',
-        badgeTextDark: 'dark:text-emerald-400',
-        accentColor: 'emerald-600'
-      };
-    default:
-      return {
-        bgLight: 'bg-[#FAF6EE]',
-        bgDark: 'dark:bg-slate-900/90 dark:border-slate-800',
-        badgeBgLight: 'bg-slate-900/10 text-slate-800',
-        badgeTextLight: 'text-slate-800',
-        badgeBgDark: 'dark:bg-slate-800 dark:text-slate-200',
-        badgeTextDark: 'dark:text-slate-200',
-        accentColor: 'slate-800'
-      };
+/**
+ * Flagship engagements from distinct practice areas. Preferred first so the
+ * homepage spotlights meaningful work instead of three near-identical sibling
+ * rows from the top of the catalog.
+ */
+const FLAGSHIP_IDS = ['cat-13', 'cat-1', 'cat-35'];
+
+const categoryKey = (item: CatalogItem) => (item.category || 'other').trim().toLowerCase();
+
+const pickFeatured = (list: CatalogItem[]): CatalogItem[] => {
+  if (list.length <= FEATURED_COUNT) return list.slice(0, FEATURED_COUNT);
+
+  const picked: CatalogItem[] = [];
+  const seen = new Set<string>();
+
+  for (const id of FLAGSHIP_IDS) {
+    const match = list.find((i) => i.id === id);
+    if (match && !seen.has(categoryKey(match))) {
+      seen.add(categoryKey(match));
+      picked.push(match);
+    }
+    if (picked.length === FEATURED_COUNT) return picked;
   }
+
+  // Top up using one entry per distinct category so the trio always looks varied.
+  for (const item of list) {
+    if (picked.length >= FEATURED_COUNT) break;
+    const key = categoryKey(item);
+    if (!seen.has(key)) {
+      seen.add(key);
+      picked.push(item);
+    }
+  }
+
+  // Last resort when the catalog has very few distinct categories.
+  for (const item of list) {
+    if (picked.length >= FEATURED_COUNT) break;
+    if (!picked.includes(item)) picked.push(item);
+  }
+
+  return picked;
 };
 
 export const ServicesGrid: React.FC<ServicesGridProps> = ({
   onOpenBookingWithService,
-  selectedRegion,
+  onNavigateCatalog
 }) => {
-  const [selectedServiceModal, setSelectedServiceModal] = useState<ServiceItem | null>(null);
-  const [isMouseDown, setIsMouseDown] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [items, setItems] = useState<CatalogItem[]>(seedCatalogItems);
+  const [loading, setLoading] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [paused, setPaused] = useState(false);
 
-  const featuredServices = servicesData.filter((s) =>
-    selectedRegion === 'GLOBAL' || s.jurisdictions.includes(selectedRegion)
-  );
-
-  // Duplicated list for infinite seamless loop scrolling
-  const displayServices = [...featuredServices, ...featuredServices];
-
-  // Continuous unidirectional auto-sliding logic (stops ONLY when click-and-holding)
   useEffect(() => {
-    let animationFrameId: number;
+    let cancelled = false;
 
-    const animateScroll = () => {
-      if (!isMouseDown && scrollRef.current) {
-        scrollRef.current.scrollLeft += 1.2; // Continuous 1-direction movement
-
-        // Infinite loop reset when reaching halfway
-        if (scrollRef.current.scrollLeft >= scrollRef.current.scrollWidth / 2) {
-          scrollRef.current.scrollLeft = 0;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/catalogs');
+        const data = await res.json();
+        if (!cancelled && data.success && Array.isArray(data.catalogs) && data.catalogs.length > 0) {
+          setItems(data.catalogs);
         }
+      } catch {
+        // Keep the bundled seed so the section still renders without a backend.
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      animationFrameId = requestAnimationFrame(animateScroll);
     };
 
-    animationFrameId = requestAnimationFrame(animateScroll);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isMouseDown]);
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
-  const handlePrev = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: -380, behavior: 'smooth' });
-    }
+  const featured = useMemo(() => pickFeatured(items), [items]);
+  const active = featured[activeIndex];
+
+  const goTo = (next: number) => {
+    const wrapped = (next + featured.length) % featured.length;
+    setDirection(wrapped >= activeIndex ? 1 : -1);
+    setActiveIndex(wrapped);
   };
 
-  const handleNext = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: 380, behavior: 'smooth' });
-    }
+  // Auto-rotation only runs while the section is actually on screen.
+  useEffect(() => {
+    if (featured.length < 2 || paused) return;
+
+    let inView = true;
+    const node = document.getElementById('services');
+    const observer = node
+      ? new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; }, { threshold: 0.25 })
+      : null;
+    if (node && observer) observer.observe(node);
+
+    const timer = setInterval(() => {
+      if (!inView) return;
+      setDirection(1);
+      setActiveIndex((i) => (i + 1) % featured.length);
+    }, AUTO_ROTATE_MS);
+
+    return () => {
+      clearInterval(timer);
+      observer?.disconnect();
+    };
+  }, [featured.length, paused]);
+
+  const variants = {
+    enter: (dir: number) => ({ opacity: 0, x: dir > 0 ? 60 : -60, filter: 'blur(6px)' }),
+    center: { opacity: 1, x: 0, filter: 'blur(0px)' },
+    exit: (dir: number) => ({ opacity: 0, x: dir > 0 ? -60 : 60, filter: 'blur(6px)' })
   };
 
-  return (
-    <section id="services" className="py-24 relative z-20 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  if (loading) {
+    return (
+      <section id="services" className="py-20 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="h-[460px] rounded-[2rem] bg-slate-100 dark:bg-slate-900/60 animate-pulse" />
+        </div>
+      </section>
+    );
+  }
+return (
+    <section
+      id="services"
+      className="py-20 relative z-20 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 transition-colors overflow-hidden"
+    >
+      {/* Ambient depth */}
+      <div className="absolute -top-24 left-1/4 w-[420px] h-[420px] bg-blue-500/10 dark:bg-blue-600/15 rounded-full blur-[110px] pointer-events-none" />
 
-        {/* Section Header with Navigation Controls */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 space-y-12">
+
+        {/* Header */}
+        <div className="text-center space-y-3 max-w-3xl mx-auto">
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
             transition={{ duration: 0.6 }}
-            className="text-left space-y-3 max-w-3xl"
+            className="space-y-3"
           >
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-xs font-extrabold uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Practice Divisions</span>
-            </div>
-
-            <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
-              Our Core Accounting & Legal Practice Areas
+            <h2 className="font-heading text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
+              Flagship Engagements
             </h2>
 
-            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
-              Comprehensive financial management, statutory audit compliance, and corporate legal representation across Pakistan, UK, US, and Gulf regulatory frameworks.
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              A snapshot of our most-recited services - the complete rate catalog lives one click away.
             </p>
           </motion.div>
+        </div>
 
-          {/* Controls & Hold Notice */}
-          <div className="flex items-center gap-4 shrink-0">
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline-block">
-              💡 Click & Hold slide bar to pause
-            </span>
+        {/* Spotlight */}
+        <div
+          className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch"
+          onMouseEnter={() => setPaused(true)}
+          onMouseLeave={() => setPaused(false)}
+        >
+          {/* MAIN STAGE */}
+          <div className="lg:col-span-7 relative">
+            <div className="relative h-full min-h-[340px] rounded-[2rem] overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 shadow-2xl shadow-blue-950/25 border border-blue-900/40">
+              {/* Grid texture */}
+              <div className="absolute inset-0 opacity-[0.07] bg-[radial-gradient(circle_at_1px_1px,#fff_1px,transparent_0)] bg-[size:22px_22px]" />
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handlePrev}
-                aria-label="Previous service card"
-                className="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-blue-600 hover:text-white hover:border-blue-600 dark:hover:bg-blue-600 dark:hover:text-white transition-all shadow-xs"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
+              <AnimatePresence mode="wait" custom={direction}>
+                <motion.div
+                  key={active.id || activeIndex}
+                  custom={direction}
+                  variants={variants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                  className="relative z-10 h-full flex flex-col justify-center gap-5 p-8 sm:p-10"
+                >
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-[0.15em] bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                      {active.category || 'Taxation'}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-sm font-extrabold text-white bg-white/10 border border-white/15 px-3 py-1 rounded-full backdrop-blur-sm">
+                      <Tag className="w-3.5 h-3.5 text-blue-300" />
+                      {active.price}
+                    </span>
+                  </div>
 
-              <button
-                onClick={handleNext}
-                aria-label="Next service card"
-                className="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-blue-600 hover:text-white hover:border-blue-600 dark:hover:bg-blue-600 dark:hover:text-white transition-all shadow-xs"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
+                  <h3 className="font-heading text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-tight">
+                    {active.title}
+                  </h3>
+
+                  <p className="text-sm text-blue-100/70 leading-relaxed max-w-lg">
+                    {active.subtext || 'Comprehensive statutory filing and advisory compliance.'}
+                  </p>
+
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-blue-200/80">
+                    <span className="inline-flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-400" />
+                      Partner-reviewed engagement
+                    </span>
+                    <span className="inline-flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-400" />
+                      Fixed published rate
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => onOpenBookingWithService(active.title)}
+                    className="self-start mt-1 inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold transition-all shadow-lg shadow-blue-600/30 active:scale-95 group"
+                  >
+                    Request This Service
+                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                  </button>
+                </motion.div>
+              </AnimatePresence>
+
+              {/* Stage index */}
+              <div className="absolute top-5 right-6 z-20 font-heading text-6xl sm:text-7xl font-black text-white/[0.07] leading-none select-none pointer-events-none">
+                {String(activeIndex + 1).padStart(2, '0')}
+              </div>
+            </div>
+          </div>
+
+          {/* SIDE SELECTOR */}
+          <div className="lg:col-span-5 flex flex-col gap-3">
+            {featured.map((item, index) => {
+              const isActive = index === activeIndex;
+              return (
+                <button
+                  key={item.id || index}
+                  onClick={() => goTo(index)}
+                  aria-pressed={isActive}
+                  className={`group relative flex-1 text-left rounded-2xl p-4 sm:p-5 border transition-all duration-300 overflow-hidden ${
+                    isActive
+                      ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-600/25 text-white'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white hover:border-blue-400/60 hover:bg-blue-50/50 dark:hover:bg-slate-900/70'
+                  }`}
+                >
+                  <div className="flex items-start gap-4">
+                    <span
+                      className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-xs font-extrabold transition-colors ${
+                        isActive
+                          ? 'bg-white/20 text-white'
+                          : 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50'
+                      }`}
+                    >
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-heading text-sm font-extrabold leading-snug">
+                          {item.title}
+                        </h4>
+                        <span
+                          className={`shrink-0 text-[11px] font-extrabold ${
+                            isActive ? 'text-white' : 'text-blue-600 dark:text-blue-400'
+                          }`}
+                        >
+                          {item.price}
+                        </span>
+                      </div>
+                      <p
+                        className={`text-[11px] mt-1 leading-relaxed line-clamp-2 ${
+                          isActive ? 'text-blue-50/80' : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {item.subtext}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+
+            {/* Arrows */}
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <div className="flex items-center gap-1.5">
+                {featured.map((item, index) => (
+                  <button
+                    key={`dot-${item.id || index}`}
+                    onClick={() => goTo(index)}
+                    aria-label={`Show ${item.title}`}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      index === activeIndex ? 'w-7 bg-blue-600 dark:bg-blue-400' : 'w-1.5 bg-slate-300 dark:bg-slate-700 hover:bg-blue-400'
+                    }`}
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => goTo(activeIndex - 1)}
+                  aria-label="Previous service"
+                  className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => goTo(activeIndex + 1)}
+                  aria-label="Next service"
+                  className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
-
-        {/* Unidirectional Auto-Sliding Container (Pauses ONLY on Click & Hold) */}
-        <div
-          onMouseDown={() => setIsMouseDown(true)}
-          onMouseUp={() => setIsMouseDown(false)}
-          onMouseLeave={() => setIsMouseDown(false)}
-          onTouchStart={() => setIsMouseDown(true)}
-          onTouchEnd={() => setIsMouseDown(false)}
-          className="relative overflow-hidden pt-2 pb-4 cursor-grab active:cursor-grabbing select-none"
-        >
-          <div
-            ref={scrollRef}
-            className="flex gap-6 overflow-x-auto scrollbar-none scroll-smooth pb-4 pt-1"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+{/* Full catalog CTA */}
+        <div className="pt-2 text-center space-y-2">
+          <button
+            onClick={onNavigateCatalog}
+            className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base shadow-xl shadow-blue-600/25 transition-all hover:scale-105 active:scale-95 group"
           >
-            {displayServices.map((service, idx) => {
-              const theme = getThemeForCategory(service.category);
+            <BookOpen className="w-5 h-5" />
+            <span>Explore Full Catalog ({items.length} Services)</span>
+            <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+          </button>
 
-              return (
-                <div
-                  key={`${service.id}-${idx}`}
-                  className="w-[320px] sm:w-[360px] md:w-[380px] shrink-0"
-                >
-                  <div
-                    className={`h-full p-6 sm:p-7 rounded-[32px] ${theme.bgLight} ${theme.bgDark} border border-black/5 dark:border-slate-800 flex flex-col justify-between hover:-translate-y-2 hover:shadow-2xl transition-all duration-500 group relative overflow-hidden`}
-                  >
-                    <div className="space-y-5">
-
-                      {/* Header Row: Category Badge & Jurisdictions Pill */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider ${theme.badgeBgLight} ${theme.badgeBgDark}`}>
-                          {service.category === 'Audit' && 'STATUTORY AUDIT'}
-                          {service.category === 'Taxation' && 'TAXATION & FBR'}
-                          {service.category === 'Legal' && 'LEGAL ADVISORY'}
-                          {service.category === 'Advisory' && 'SECP CORPORATE'}
-                          {service.category === 'Forensic' && 'FORENSIC AUDIT'}
-                          {service.category === 'Accounting' && 'CLOUD BOOKKEEPING'}
-                        </span>
-
-                        <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700 shadow-xs">
-                          PK · UK · USA · GULF
-                        </span>
-                      </div>
-
-                      {/* Title & Description */}
-                      <div className="space-y-2 text-left">
-                        <h3 className="font-heading text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {service.title}
-                        </h3>
-                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
-                          {service.fullDesc}
-                        </p>
-                      </div>
-
-                      {/* Onur Gür Style Mock Interactive UI Component Widget */}
-                      <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800/80 shadow-md space-y-3">
-
-                        {/* Widget Header */}
-                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800/80 pb-2">
-                          <div className="flex items-center gap-1.5">
-                            <FileCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                            <span>Key Deliverables & Scope</span>
-                          </div>
-                          <span className="text-[9px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">
-                            ACTIVE
-                          </span>
-                        </div>
-
-                        {/* Bullet Items */}
-                        <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
-                          {service.features.slice(0, 3).map((feat, i) => (
-                            <div key={i} className="flex items-start gap-2 text-left">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                              <span className="line-clamp-1 text-[11px] font-medium">{feat}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                      </div>
-
-                    </div>
-
-                    {/* Footer Action Buttons */}
-                    <div className="pt-6 mt-6 border-t border-black/5 dark:border-slate-800/80 flex items-center justify-between gap-3">
-                      <button
-                        onClick={() => setSelectedServiceModal(service)}
-                        className="text-xs font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1.5 transition-colors group/btn"
-                      >
-                        <span>View Details</span>
-                        <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover/btn:translate-x-1" />
-                      </button>
-
-                      <button
-                        onClick={() => onOpenBookingWithService(service.title)}
-                        className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/20 active:scale-95 flex items-center gap-1.5"
-                      >
-                        <span>Request Service</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Showing {featured.length} featured of {items.length} published services
+          </p>
         </div>
 
       </div>
-
-      <ServiceModal
-        service={selectedServiceModal}
-        onClose={() => setSelectedServiceModal(null)}
-        onSelectServiceForBooking={onOpenBookingWithService}
-      />
     </section>
   );
 };
-
-
-
-

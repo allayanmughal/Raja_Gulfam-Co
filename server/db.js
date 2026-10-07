@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { neon } from '@neondatabase/serverless';
+import { defaultSeedCatalogs } from './seedCatalog.js';
 
 dotenv.config();
 
@@ -133,7 +134,8 @@ function getInitialData() {
         createdAt: new Date().toISOString()
       }
     ],
-    events: [...defaultSeedEvents]
+    events: [...defaultSeedEvents],
+    catalogs: [...defaultSeedCatalogs]
   };
 }
 
@@ -144,6 +146,9 @@ function readLocalData() {
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf8');
       memoryStore = JSON.parse(raw);
+      if (!memoryStore.catalogs || memoryStore.catalogs.length === 0) {
+        memoryStore.catalogs = [...defaultSeedCatalogs];
+      }
       return memoryStore;
     }
   } catch (err) {
@@ -201,6 +206,34 @@ async function initNeonTables() {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `;
+    await sqlClient`
+      CREATE TABLE IF NOT EXISTS catalogs (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        subtext TEXT NOT NULL,
+        price TEXT NOT NULL,
+        category TEXT DEFAULT 'Taxation',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    // --- Auth module migrations (idempotent, safe to re-run) ---
+    await sqlClient`ALTER TABLE admins ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin'`;
+    await sqlClient`ALTER TABLE admins ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`;
+    await sqlClient`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE`;
+    await sqlClient`ALTER TABLE admins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`;
+
+    // The column-level UNIQUE on username is case-SENSITIVE, so it would happily
+    // allow Foo@x.com and foo@x.com to coexist while the login lookup (which
+    // uses LOWER) matched an arbitrary one. Collapse any such rows first, then
+    // enforce case-insensitive uniqueness with a functional index.
+    await sqlClient`
+      DELETE FROM admins a
+      USING admins b
+      WHERE LOWER(a.username) = LOWER(b.username) AND a.created_at > b.created_at
+    `;
+    await sqlClient`CREATE UNIQUE INDEX IF NOT EXISTS admins_username_lower_key ON admins (LOWER(username))`;
 
     // Seed admin if not present
     const existingAdmins = await sqlClient`SELECT id FROM admins LIMIT 1`;
@@ -208,8 +241,8 @@ async function initNeonTables() {
       const salt = bcrypt.genSaltSync(10);
       const passwordHash = bcrypt.hashSync(INITIAL_ADMIN_PASSWORD, salt);
       await sqlClient`
-        INSERT INTO admins (id, username, password_hash)
-        VALUES (${'admin-1'}, ${INITIAL_ADMIN_EMAIL}, ${passwordHash});
+        INSERT INTO admins (id, username, password_hash, role, is_active)
+        VALUES (${'admin-1'}, ${INITIAL_ADMIN_EMAIL}, ${passwordHash}, ${'admin'}, TRUE);
       `;
     }
 
@@ -234,12 +267,67 @@ async function initNeonTables() {
         `;
       }
     }
+
+    // Seed catalogs if empty
+    const existingCatalogs = await sqlClient`SELECT id FROM catalogs LIMIT 1`;
+    if (existingCatalogs.length === 0) {
+      for (const cat of defaultSeedCatalogs) {
+        await sqlClient`
+          INSERT INTO catalogs (id, title, subtext, price, category)
+          VALUES (
+            ${cat.id},
+            ${cat.title},
+            ${cat.subtext},
+            ${cat.price},
+            ${cat.category || 'Taxation'}
+          );
+        `;
+      }
+    }
   } catch (err) {
     console.error("Neon DB Init Error:", err);
   }
 }
 
 let neonInitialized = false;
+
+/**
+ * Lazily create/upgrade the Neon schema exactly once per process.
+ * Returns false when no DATABASE_URL is configured so callers can fall back
+ * to the local JSON store.
+ */
+async function ensureNeonReady() {
+  if (!sqlClient) return false;
+  if (!neonInitialized) {
+    await initNeonTables();
+    neonInitialized = true;
+  }
+  return true;
+}
+
+/** Strip the password hash before an admin record ever leaves the server. */
+function toPublicAdmin(admin) {
+  if (!admin) return null;
+  const { passwordHash, password_hash, ...rest } = admin;
+  return rest;
+}
+
+/** Give JSON-store records the same shape as Neon rows. */
+function normalizeAdmin(admin) {
+  return {
+    id: admin.id,
+    username: admin.username,
+    role: admin.role || 'admin',
+    isActive: admin.isActive !== false,
+    createdAt: admin.createdAt || null,
+    updatedAt: admin.updatedAt || admin.createdAt || null,
+    lastLoginAt: admin.lastLoginAt || null,
+  };
+}
+
+function isUniqueViolation(err) {
+  return err && (err.code === '23505' || /already exists|duplicate key/i.test(err.message || ''));
+}
 
 export const db = {
   async getAdminByUsername(username) {
@@ -250,7 +338,9 @@ export const db = {
       }
       try {
         const rows = await sqlClient`
-          SELECT id, username, password_hash AS "passwordHash", created_at AS "createdAt"
+          SELECT id, username, password_hash AS "passwordHash", role,
+                 is_active AS "isActive", created_at AS "createdAt",
+                 updated_at AS "updatedAt", last_login_at AS "lastLoginAt"
           FROM admins
           WHERE LOWER(username) = LOWER(${username})
           LIMIT 1
@@ -262,7 +352,222 @@ export const db = {
     }
 
     const data = readLocalData();
-    return data.admins.find(a => a.username.toLowerCase() === username.toLowerCase()) || null;
+    const found = data.admins.find((a) => a.username.toLowerCase() === username.toLowerCase());
+    return found ? { ...normalizeAdmin(found), passwordHash: found.passwordHash } : null;
+  },
+
+  /** All admin accounts, never including password hashes. */
+  async listAdmins() {
+    if (await ensureNeonReady()) {
+      try {
+        return await sqlClient`
+          SELECT id, username, role, is_active AS "isActive",
+                 created_at AS "createdAt", updated_at AS "updatedAt",
+                 last_login_at AS "lastLoginAt"
+          FROM admins
+          ORDER BY created_at ASC
+        `;
+      } catch (err) {
+        console.error("Neon Query Error (listAdmins):", err);
+      }
+    }
+
+    return readLocalData().admins.map((a) => normalizeAdmin(a));
+  },
+
+  async getAdminById(id) {
+    if (await ensureNeonReady()) {
+      try {
+        const rows = await sqlClient`
+          SELECT id, username, password_hash AS "passwordHash", role,
+                 is_active AS "isActive", created_at AS "createdAt",
+                 updated_at AS "updatedAt", last_login_at AS "lastLoginAt"
+          FROM admins
+          WHERE id = ${id}
+          LIMIT 1
+        `;
+        return rows[0] || null;
+      } catch (err) {
+        console.error("Neon Query Error (getAdminById):", err);
+      }
+    }
+
+    const found = readLocalData().admins.find((a) => a.id === id);
+    return found ? { ...normalizeAdmin(found), passwordHash: found.passwordHash } : null;
+  },
+
+  /** Number of enabled accounts — guards against locking everyone out. */
+  async countActiveAdmins() {
+    if (await ensureNeonReady()) {
+      try {
+        const rows = await sqlClient`SELECT COUNT(*)::int AS count FROM admins WHERE is_active = TRUE`;
+        return rows[0].count;
+      } catch (err) {
+        console.error("Neon Query Error (countActiveAdmins):", err);
+      }
+    }
+
+    return readLocalData().admins.filter((a) => a.isActive !== false).length;
+  },
+
+  /**
+   * Create an admin. Throws an error with `.code = 'DUPLICATE_USERNAME'`
+   * when the username is already taken.
+   */
+  async createAdmin({ username, password, role = 'admin' }) {
+    const id = `admin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const passwordHash = bcrypt.hashSync(password, bcrypt.genSaltSync(10));
+    const now = new Date().toISOString();
+
+    if (await ensureNeonReady()) {
+      try {
+        // Explicit case-insensitive pre-check so the client gets a clean
+        // DUPLICATE_USERNAME instead of a raw index violation.
+        const clash = await sqlClient`SELECT id FROM admins WHERE LOWER(username) = LOWER(${username}) LIMIT 1`;
+        if (clash.length > 0) {
+          throw Object.assign(new Error('Username already exists.'), { code: 'DUPLICATE_USERNAME' });
+        }
+
+        const rows = await sqlClient`
+          INSERT INTO admins (id, username, password_hash, role, is_active, created_at, updated_at)
+          VALUES (${id}, ${username}, ${passwordHash}, ${role}, TRUE, ${now}, ${now})
+          RETURNING id, username, role, is_active AS "isActive",
+                    created_at AS "createdAt", updated_at AS "updatedAt"
+        `;
+        return rows[0];
+      } catch (err) {
+        console.error("Neon Query Error (createAdmin):", err);
+        if (isUniqueViolation(err)) {
+          throw Object.assign(new Error('Username already exists.'), { code: 'DUPLICATE_USERNAME' });
+        }
+        throw err;
+      }
+    }
+
+    const data = readLocalData();
+    if (data.admins.some((a) => a.username.toLowerCase() === username.toLowerCase())) {
+      throw Object.assign(new Error('Username already exists.'), { code: 'DUPLICATE_USERNAME' });
+    }
+    const newAdmin = {
+      id, username, passwordHash, role, isActive: true,
+      createdAt: now, updatedAt: now, lastLoginAt: null,
+    };
+    data.admins.push(newAdmin);
+    writeLocalData(data);
+    return toPublicAdmin(newAdmin);
+  },
+
+  /** Partial update. Only re-hashes when a new password is supplied. */
+  async updateAdmin(id, patch = {}) {
+    const now = new Date().toISOString();
+
+    if (await ensureNeonReady()) {
+      try {
+        const existingRows = await sqlClient`SELECT * FROM admins WHERE id = ${id} LIMIT 1`;
+        if (existingRows.length === 0) return null;
+        const existing = existingRows[0];
+
+        if (patch.username !== undefined) {
+          const clashRows = await sqlClient`
+            SELECT id FROM admins
+            WHERE LOWER(username) = LOWER(${patch.username}) AND id <> ${id}
+            LIMIT 1
+          `;
+          if (clashRows.length > 0) {
+            throw Object.assign(new Error('Username already exists.'), { code: 'DUPLICATE_USERNAME' });
+          }
+        }
+
+        const username = patch.username !== undefined ? patch.username : existing.username;
+        const role = patch.role !== undefined ? patch.role : (existing.role || 'admin');
+        const isActive = patch.isActive !== undefined ? patch.isActive : existing.is_active;
+        const passwordHash =
+          patch.password ? bcrypt.hashSync(patch.password, bcrypt.genSaltSync(10)) : existing.password_hash;
+
+        const rows = await sqlClient`
+          UPDATE admins
+          SET username = ${username}, role = ${role}, is_active = ${isActive},
+              password_hash = ${passwordHash}, updated_at = ${now}
+          WHERE id = ${id}
+          RETURNING id, username, role, is_active AS "isActive",
+                    created_at AS "createdAt", updated_at AS "updatedAt",
+                    last_login_at AS "lastLoginAt"
+        `;
+        return rows[0] || null;
+      } catch (err) {
+        console.error("Neon Query Error (updateAdmin):", err);
+        if (isUniqueViolation(err)) {
+          throw Object.assign(new Error('Username already exists.'), { code: 'DUPLICATE_USERNAME' });
+        }
+        throw err;
+      }
+    }
+
+    const data = readLocalData();
+    const index = data.admins.findIndex((a) => a.id === id);
+    if (index === -1) return null;
+
+    const existing = data.admins[index];
+    if (patch.username !== undefined) {
+      const clash = data.admins.some(
+        (a) => a.id !== id && a.username.toLowerCase() === patch.username.toLowerCase()
+      );
+      if (clash) {
+        throw Object.assign(new Error('Username already exists.'), { code: 'DUPLICATE_USERNAME' });
+      }
+    }
+
+    data.admins[index] = {
+      ...existing,
+      username: patch.username !== undefined ? patch.username : existing.username,
+      role: patch.role !== undefined ? patch.role : (existing.role || 'admin'),
+      isActive: patch.isActive !== undefined ? patch.isActive : existing.isActive !== false,
+      passwordHash: patch.password
+        ? bcrypt.hashSync(patch.password, bcrypt.genSaltSync(10))
+        : existing.passwordHash,
+      updatedAt: now,
+    };
+    writeLocalData(data);
+    return normalizeAdmin(data.admins[index]);
+  },
+
+  async deleteAdmin(id) {
+    if (await ensureNeonReady()) {
+      try {
+        const rows = await sqlClient`DELETE FROM admins WHERE id = ${id} RETURNING id`;
+        return rows.length > 0;
+      } catch (err) {
+        console.error("Neon Query Error (deleteAdmin):", err);
+      }
+    }
+
+    const data = readLocalData();
+    const index = data.admins.findIndex((a) => a.id === id);
+    if (index === -1) return false;
+    data.admins.splice(index, 1);
+    writeLocalData(data);
+    return true;
+  },
+
+  /** Best-effort login timestamp; never blocks a successful login. */
+  async touchAdminLogin(id) {
+    if (await ensureNeonReady()) {
+      try {
+        await sqlClient`UPDATE admins SET last_login_at = NOW(), updated_at = NOW() WHERE id = ${id}`;
+        return;
+      } catch (err) {
+        console.error("Neon Query Error (touchAdminLogin):", err);
+        return;
+      }
+    }
+
+    const data = readLocalData();
+    const admin = data.admins.find((a) => a.id === id);
+    if (admin) {
+      admin.lastLoginAt = new Date().toISOString();
+      admin.updatedAt = admin.lastLoginAt;
+      writeLocalData(data);
+    }
   },
 
   async getAllEvents() {
@@ -448,6 +753,145 @@ export const db = {
     if (index === -1) return false;
 
     data.events.splice(index, 1);
+    writeLocalData(data);
+    return true;
+  },
+
+  // --- CATALOG METHODS ---
+
+  async getAllCatalogs() {
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        const rows = await sqlClient`
+          SELECT id, title, subtext, price, category, created_at AS "createdAt", updated_at AS "updatedAt"
+          FROM catalogs
+          ORDER BY created_at ASC
+        `;
+        return rows;
+      } catch (err) {
+        console.error("Neon Query Error (getAllCatalogs):", err);
+      }
+    }
+
+    const data = readLocalData();
+    return data.catalogs || defaultSeedCatalogs;
+  },
+
+  async createCatalog(catalogInput) {
+    const newCatalog = {
+      id: `cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      title: catalogInput.title,
+      subtext: catalogInput.subtext || '',
+      price: catalogInput.price || 'PKR 0',
+      category: catalogInput.category || 'Taxation'
+    };
+
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        await sqlClient`
+          INSERT INTO catalogs (id, title, subtext, price, category)
+          VALUES (
+            ${newCatalog.id},
+            ${newCatalog.title},
+            ${newCatalog.subtext},
+            ${newCatalog.price},
+            ${newCatalog.category}
+          );
+        `;
+        return newCatalog;
+      } catch (err) {
+        console.error("Neon Query Error (createCatalog):", err);
+      }
+    }
+
+    const data = readLocalData();
+    if (!data.catalogs) data.catalogs = [];
+    data.catalogs.unshift(newCatalog);
+    writeLocalData(data);
+    return newCatalog;
+  },
+
+  async updateCatalog(id, catalogInput) {
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        const existingRows = await sqlClient`SELECT * FROM catalogs WHERE id = ${id} LIMIT 1`;
+        if (existingRows.length === 0) return null;
+        const existing = existingRows[0];
+
+        const updated = {
+          title: catalogInput.title !== undefined ? catalogInput.title : existing.title,
+          subtext: catalogInput.subtext !== undefined ? catalogInput.subtext : existing.subtext,
+          price: catalogInput.price !== undefined ? catalogInput.price : existing.price,
+          category: catalogInput.category !== undefined ? catalogInput.category : existing.category
+        };
+
+        await sqlClient`
+          UPDATE catalogs
+          SET title = ${updated.title},
+              subtext = ${updated.subtext},
+              price = ${updated.price},
+              category = ${updated.category},
+              updated_at = NOW()
+          WHERE id = ${id};
+        `;
+
+        return { id, ...updated };
+      } catch (err) {
+        console.error("Neon Query Error (updateCatalog):", err);
+      }
+    }
+
+    const data = readLocalData();
+    if (!data.catalogs) data.catalogs = [...defaultSeedCatalogs];
+    const index = data.catalogs.findIndex(c => c.id === id);
+    if (index === -1) return null;
+
+    const existing = data.catalogs[index];
+    const updated = {
+      ...existing,
+      title: catalogInput.title !== undefined ? catalogInput.title : existing.title,
+      subtext: catalogInput.subtext !== undefined ? catalogInput.subtext : existing.subtext,
+      price: catalogInput.price !== undefined ? catalogInput.price : existing.price,
+      category: catalogInput.category !== undefined ? catalogInput.category : existing.category
+    };
+
+    data.catalogs[index] = updated;
+    writeLocalData(data);
+    return updated;
+  },
+
+  async deleteCatalog(id) {
+    if (sqlClient) {
+      if (!neonInitialized) {
+        await initNeonTables();
+        neonInitialized = true;
+      }
+      try {
+        const result = await sqlClient`DELETE FROM catalogs WHERE id = ${id} RETURNING id`;
+        return result.length > 0;
+      } catch (err) {
+        console.error("Neon Query Error (deleteCatalog):", err);
+      }
+    }
+
+    const data = readLocalData();
+    if (!data.catalogs) data.catalogs = [...defaultSeedCatalogs];
+    const index = data.catalogs.findIndex(c => c.id === id);
+    if (index === -1) return false;
+
+    data.catalogs.splice(index, 1);
     writeLocalData(data);
     return true;
   }

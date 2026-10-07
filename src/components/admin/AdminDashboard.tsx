@@ -1,33 +1,51 @@
 import React, { useEffect, useState } from 'react';
 import type { EventItem, CreateEventInput } from '../../types/event';
-import { TemplateSelector } from './TemplateSelector';
+import type { CatalogItem } from '../../types';
+import { seedCatalogItems } from '../../data/catalogSeed';
 import {
   LogOut, Plus, Edit2, Trash2, Eye, EyeOff, Search,
-  CheckCircle, FileText, Layout, Upload, X, AlertCircle, RefreshCw,
-  Sparkles, ShieldCheck
+  CheckCircle, X, AlertCircle, RefreshCw,
+  ShieldCheck, Tag, BookOpen, Layers, Sun, Moon, FileText, ImageIcon, UserCog
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTheme } from '../../context/ThemeContext';
+import { AdminUsersPanel } from './AdminUsersPanel';
 
 interface Props {
   adminEmail: string;
+  adminId: string;
+  isSuperAdmin: boolean;
   onLogout: () => void;
   onNavigateHome: () => void;
 }
 
-export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNavigateHome }) => {
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterTab, setFilterTab] = useState<'all' | 'published' | 'drafts'>('all');
+export const AdminDashboard: React.FC<Props> = ({ adminEmail, adminId, isSuperAdmin, onLogout, onNavigateHome }) => {
+  const [activeTab, setActiveTab] = useState<'events' | 'catalog' | 'admins'>('events');
+  const { theme, toggleTheme } = useTheme();
 
-  // Modal States
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  // A non-super admin must never be able to view the Admin Users section, even
+  // if a stale tab state or a manual click tries to select it.
+  const canManageAdmins = isSuperAdmin;
+  const selectTab = (tab: 'events' | 'catalog' | 'admins') => {
+    if (tab === 'admins' && !canManageAdmins) return;
+    setActiveTab(tab);
+  };
+
+  useEffect(() => {
+    if (!canManageAdmins && activeTab === 'admins') setActiveTab('events');
+  }, [canManageAdmins, activeTab]);
+
+  // --- EVENTS STATE ---
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [eventSearchQuery, setEventSearchQuery] = useState('');
+  const [eventFilterTab, setEventFilterTab] = useState<'all' | 'published' | 'drafts'>('all');
+
+  const [isEventFormOpen, setIsEventFormOpen] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
 
-  // Form Fields State
-  const [formData, setFormData] = useState<CreateEventInput>({
+  const [eventFormData, setEventFormData] = useState<CreateEventInput>({
     title: '',
     priorityDetail: '',
     description: '',
@@ -36,15 +54,32 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
     template: 'template1',
     published: true
   });
-
   const [imageUrlInput, setImageUrlInput] = useState('');
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [eventFormError, setEventFormError] = useState<string | null>(null);
+  const [submittingEvent, setSubmittingEvent] = useState(false);
 
+  // --- CATALOG STATE ---
+  const [catalogs, setCatalogs] = useState<CatalogItem[]>(seedCatalogItems);
+  const [loadingCatalogs, setLoadingCatalogs] = useState(true);
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState('');
+  const [catalogCategoryFilter, setCatalogCategoryFilter] = useState('All');
+
+  const [isCatalogFormOpen, setIsCatalogFormOpen] = useState(false);
+  const [editingCatalogId, setEditingCatalogId] = useState<string | null>(null);
+  const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
+
+  const [catalogFormData, setCatalogFormData] = useState({
+    title: '',
+    subtext: '',
+    price: '',
+    category: 'Taxation'
+  });
+  const [catalogFormError, setCatalogFormError] = useState<string | null>(null);
+  const [submittingCatalog, setSubmittingCatalog] = useState(false);
+
+  // Fetch Events
   const fetchEvents = async () => {
-    setLoading(true);
-    setError(null);
+    setLoadingEvents(true);
     try {
       const res = await fetch('/api/admin/events', { credentials: 'include' });
       if (res.status === 401) {
@@ -54,96 +89,71 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
       const data = await res.json();
       if (data.success) {
         setEvents(data.events || []);
-      } else {
-        throw new Error(data.error || 'Failed to fetch admin events');
       }
-    } catch (err: any) {
-      setError(err.message || 'Unable to connect to server');
+    } catch (err) {
+      console.warn('Failed to fetch admin events:', err);
     } finally {
-      setLoading(false);
+      setLoadingEvents(false);
+    }
+  };
+
+  // Fetch Catalogs
+  const fetchCatalogs = async () => {
+    setLoadingCatalogs(true);
+    try {
+      const res = await fetch('/api/catalogs');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.catalogs) && data.catalogs.length > 0) {
+        setCatalogs(data.catalogs);
+      }
+    } catch (err) {
+      console.warn('Using local seed catalog fallback:', err);
+    } finally {
+      setLoadingCatalogs(false);
     }
   };
 
   useEffect(() => {
     fetchEvents();
+    fetchCatalogs();
   }, []);
 
-  // Open Form for Adding New Event
-  const handleOpenAddModal = () => {
+  // --- EVENT HANDLERS ---
+  const handleOpenAddEventModal = () => {
     setEditingEventId(null);
-    setFormData({
+    setEventFormData({
       title: '',
       priorityDetail: '',
       description: '',
-      images: [
-        'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=1200'
-      ],
+      images: [],
       date: new Date().toISOString().split('T')[0],
       template: 'template1',
       published: true
     });
     setImageUrlInput('');
-    setFormError(null);
-    setIsFormOpen(true);
+    setEventFormError(null);
+    setIsEventFormOpen(true);
   };
 
-  // Open Form for Editing Existing Event
-  const handleOpenEditModal = (evt: EventItem) => {
+  const handleOpenEditEventModal = (evt: EventItem) => {
     setEditingEventId(evt.id);
-    setFormData({
+    setEventFormData({
       title: evt.title,
       priorityDetail: evt.priorityDetail,
       description: evt.description,
-      images: [...evt.images],
+      images: Array.isArray(evt.images) ? [...evt.images] : [],
       date: evt.date,
       template: evt.template,
       published: evt.published
     });
     setImageUrlInput('');
-    setFormError(null);
-    setIsFormOpen(true);
-  };
-
-  // Handle Image File Upload via /api/admin/upload
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploadingImage(true);
-    setFormError(null);
-
-    const uploadFormData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      uploadFormData.append('images', files[i]);
-    }
-
-    try {
-      const res = await fetch('/api/admin/upload', {
-        method: 'POST',
-        body: uploadFormData,
-        credentials: 'include'
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setFormData(prev => ({
-          ...prev,
-          images: [...prev.images, ...data.urls]
-        }));
-      } else {
-        setFormError(data.error || 'Failed to upload image(s)');
-      }
-    } catch (err: any) {
-      setFormError('Image upload failed. Ensure backend server is running.');
-    } finally {
-      setUploadingImage(false);
-      e.target.value = '';
-    }
+    setEventFormError(null);
+    setIsEventFormOpen(true);
   };
 
   const handleAddImageUrl = () => {
     if (!imageUrlInput.trim()) return;
-    setFormData(prev => ({
+    setEventFormData(prev => ({
       ...prev,
       images: [...prev.images, imageUrlInput.trim()]
     }));
@@ -151,22 +161,21 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
   };
 
   const handleRemoveImage = (index: number) => {
-    setFormData(prev => ({
+    setEventFormData(prev => ({
       ...prev,
       images: prev.images.filter((_, i) => i !== index)
     }));
   };
 
-  // Save Event (Create or Update)
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title.trim() || !formData.priorityDetail.trim() || !formData.description.trim()) {
-      setFormError('Title, High-Priority Short Detail, and Description are required.');
+    if (!eventFormData.title.trim() || !eventFormData.priorityDetail.trim() || !eventFormData.description.trim()) {
+      setEventFormError('Title, High-Priority Detail, and Description are required.');
       return;
     }
 
-    setSubmitting(true);
-    setFormError(null);
+    setSubmittingEvent(true);
+    setEventFormError(null);
 
     try {
       const endpoint = editingEventId ? `/api/admin/events/${editingEventId}` : '/api/admin/events';
@@ -176,25 +185,24 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(formData)
+        body: JSON.stringify(eventFormData)
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
-        setIsFormOpen(false);
+        setIsEventFormOpen(false);
         fetchEvents();
       } else {
-        setFormError(data.error || 'Failed to save event.');
+        setEventFormError(data.error || 'Failed to save event.');
       }
-    } catch (err: any) {
-      setFormError('Save operation failed.');
+    } catch (err) {
+      setEventFormError('Save operation failed.');
     } finally {
-      setSubmitting(false);
+      setSubmittingEvent(false);
     }
   };
 
-  // Toggle Publish Status Quick Action
-  const handleTogglePublish = async (evt: EventItem) => {
+  const handleTogglePublishEvent = async (evt: EventItem) => {
     try {
       const res = await fetch(`/api/admin/events/${evt.id}`, {
         method: 'PUT',
@@ -202,7 +210,8 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
         credentials: 'include',
         body: JSON.stringify({ published: !evt.published })
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (data.success) {
         fetchEvents();
       }
     } catch (err) {
@@ -210,15 +219,14 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
     }
   };
 
-  // Delete Event Action
-  const handleDeleteConfirm = async () => {
-    if (!deletingEventId) return;
+  const handleDeleteEvent = async (id: string) => {
     try {
-      const res = await fetch(`/api/admin/events/${deletingEventId}`, {
+      const res = await fetch(`/api/admin/events/${id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (data.success) {
         setDeletingEventId(null);
         fetchEvents();
       }
@@ -227,412 +235,644 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
     }
   };
 
-  // Handle Secure Logout
-  const handleLogoutClick = async () => {
+  // --- CATALOG HANDLERS ---
+  const handleOpenAddCatalogModal = () => {
+    setEditingCatalogId(null);
+    setCatalogFormData({
+      title: '',
+      subtext: '',
+      price: 'PKR ',
+      category: 'Taxation'
+    });
+    setCatalogFormError(null);
+    setIsCatalogFormOpen(true);
+  };
+
+  const handleOpenEditCatalogModal = (cat: CatalogItem) => {
+    setEditingCatalogId(cat.id);
+    setCatalogFormData({
+      title: cat.title,
+      subtext: cat.subtext,
+      price: cat.price,
+      category: cat.category || 'Taxation'
+    });
+    setCatalogFormError(null);
+    setIsCatalogFormOpen(true);
+  };
+
+  const handleSaveCatalog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!catalogFormData.title.trim() || !catalogFormData.price.trim()) {
+      setCatalogFormError('Service Title and Price are required.');
+      return;
+    }
+
+    setSubmittingCatalog(true);
+    setCatalogFormError(null);
+
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      const endpoint = editingCatalogId ? `/api/admin/catalogs/${editingCatalogId}` : '/api/admin/catalogs';
+      const method = editingCatalogId ? 'PUT' : 'POST';
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(catalogFormData)
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setIsCatalogFormOpen(false);
+        fetchCatalogs();
+      } else {
+        setCatalogFormError(data.error || 'Failed to save catalog service.');
+      }
     } catch (err) {
-      console.error(err);
+      setCatalogFormError('Save operation failed.');
     } finally {
-      onLogout();
+      setSubmittingCatalog(false);
     }
   };
 
-  // Filtering Events List
-  const filteredEvents = events.filter(evt => {
-    const matchesTab = filterTab === 'all' || (filterTab === 'published' && evt.published) || (filterTab === 'drafts' && !evt.published);
-    const q = searchQuery.toLowerCase();
-    const matchesSearch = evt.title.toLowerCase().includes(q) || evt.priorityDetail.toLowerCase().includes(q) || evt.description.toLowerCase().includes(q);
-    return matchesTab && matchesSearch;
+  const handleDeleteCatalog = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/catalogs/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDeletingCatalogId(null);
+        fetchCatalogs();
+      } else {
+        setCatalogs(prev => prev.filter(c => c.id !== id));
+        setDeletingCatalogId(null);
+      }
+    } catch (err) {
+      setCatalogs(prev => prev.filter(c => c.id !== id));
+      setDeletingCatalogId(null);
+    }
+  };
+
+  // Filtered Events
+  const filteredEvents = events.filter((evt) => {
+    const matchesSearch =
+      evt.title.toLowerCase().includes(eventSearchQuery.toLowerCase()) ||
+      evt.description.toLowerCase().includes(eventSearchQuery.toLowerCase());
+
+    if (eventFilterTab === 'published') return matchesSearch && evt.published;
+    if (eventFilterTab === 'drafts') return matchesSearch && !evt.published;
+    return matchesSearch;
   });
 
-  const totalEvents = events.length;
-  const publishedCount = events.filter(e => e.published).length;
-  const draftCount = events.filter(e => !e.published).length;
+  // Filtered Catalogs
+  const filteredCatalogs = catalogs.filter((cat) => {
+    const matchesSearch =
+      cat.title.toLowerCase().includes(catalogSearchQuery.toLowerCase()) ||
+      cat.subtext.toLowerCase().includes(catalogSearchQuery.toLowerCase()) ||
+      cat.price.toLowerCase().includes(catalogSearchQuery.toLowerCase());
+
+    const matchesCategory =
+      catalogCategoryFilter === 'All' || cat.category?.toLowerCase() === catalogCategoryFilter.toLowerCase();
+
+    return matchesSearch && matchesCategory;
+  });
+
+  // --- SIDEBAR NAVIGATION STYLING ---
+  const sidebarNavClass = (isActive: boolean) =>
+    `w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-extrabold transition-all ${
+      isActive
+        ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
+        : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800'
+    }`;
+
+  const sidebarCountClass =
+    'shrink-0 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300';
+  const sidebarCountActiveClass =
+    'shrink-0 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-white/25 text-white';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pt-20 pb-16 px-4 sm:px-8">
+    <div className="min-h-screen pt-4 sm:pt-6 pb-20 px-4 sm:px-6 lg:px-8 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 relative overflow-hidden">
+      
+      {/* Background Decorative Element */}
+      <div className="absolute top-0 right-1/4 w-[600px] h-[600px] bg-blue-600/10 rounded-full filter blur-[140px] pointer-events-none" />
 
-      {/* Top Navbar Bar */}
-      <div className="max-w-7xl mx-auto space-y-8">
+      <div className="max-w-7xl mx-auto space-y-8 relative z-10">
 
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center font-heading font-extrabold text-xl shadow-inner">
-              RGC
+        {/* Dashboard Header Bar */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center shadow-inner">
+              <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-heading text-xl font-extrabold text-white">
-                  Events & News Admin Control Center
-                </h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Secure Auth
+                <h1 className="font-heading text-xl font-extrabold text-slate-900 dark:text-white">Management Portal</h1>
+                <span className="px-2.5 py-0.5 rounded-full bg-blue-950 text-blue-400 border border-blue-800 text-[10px] font-bold uppercase">
+                  Authenticated
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Logged in as: <strong className="text-slate-200">{adminEmail}</strong>
-              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">Logged in as <span className="text-slate-700 dark:text-slate-200 font-semibold">{adminEmail}</span></p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <button
+              onClick={toggleTheme}
+              className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 transition-colors"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label="Toggle colour theme"
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Moon className="w-4 h-4 text-blue-500" />
+              )}
+            </button>
+
+            <button
               onClick={onNavigateHome}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors"
+              className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-extrabold text-slate-700 dark:text-slate-200 transition-colors"
             >
-              Public Website
+              ← Visit Site
             </button>
-
             <button
-              onClick={fetchEvents}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-              title="Refresh Data"
+              onClick={onLogout}
+              className="px-4 py-2.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-extrabold transition-colors flex items-center gap-2"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : ''}`} />
-            </button>
-
-            <button
-              onClick={handleLogoutClick}
-              className="px-4 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-extrabold flex items-center gap-1.5 transition-colors shadow-sm"
-            >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-4 h-4" />
               <span>Logout</span>
             </button>
           </div>
         </div>
 
-        {/* Dashboard Quick Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-md space-y-2">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase">
-              <span>Total Events</span>
-              <FileText className="w-4 h-4 text-blue-400" />
-            </div>
-            <p className="font-heading text-3xl font-black text-white">{totalEvents}</p>
-            <p className="text-[11px] text-slate-500">All managed items in database</p>
-          </div>
+        {/* Sidebar Navigation + Active Section Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)] gap-6 items-start">
 
-          <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-md space-y-2">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase">
-              <span>Published Live</span>
-              <CheckCircle className="w-4 h-4 text-emerald-400" />
-            </div>
-            <p className="font-heading text-3xl font-black text-emerald-400">{publishedCount}</p>
-            <p className="text-[11px] text-slate-500">Visible on public frontend gallery</p>
-          </div>
+          {/* --- SIDEBAR --- */}
+          <aside className="space-y-3 lg:sticky lg:top-6">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 space-y-2 shadow-xl">
+              <p className="px-2.5 pt-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-600 dark:text-slate-500">
+                Management Sections
+              </p>
 
-          <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-md space-y-2">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase">
-              <span>Draft / Unpublished</span>
-              <EyeOff className="w-4 h-4 text-amber-400" />
-            </div>
-            <p className="font-heading text-3xl font-black text-amber-400">{draftCount}</p>
-            <p className="text-[11px] text-slate-500">Hidden from public website</p>
-          </div>
-        </div>
+              <button
+                onClick={() => selectTab('events')}
+                className={sidebarNavClass(activeTab === 'events')}
+              >
+                <Layers className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Events &amp; Announcements</span>
+                <span className={activeTab === 'events' ? sidebarCountActiveClass : sidebarCountClass}>
+                  {events.length}
+                </span>
+              </button>
 
-        {/* Action Bar & Filtering Tabs */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900 border border-slate-800">
+              <button
+                onClick={() => selectTab('catalog')}
+                className={sidebarNavClass(activeTab === 'catalog')}
+              >
+                <BookOpen className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Services &amp; Catalog</span>
+                <span className={activeTab === 'catalog' ? sidebarCountActiveClass : sidebarCountClass}>
+                  {catalogs.length}
+                </span>
+              </button>
 
-          {/* Tabs */}
-          <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setFilterTab('all')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${filterTab === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
-            >
-              All ({totalEvents})
-            </button>
-            <button
-              onClick={() => setFilterTab('published')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${filterTab === 'published' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}
-            >
-              Published ({publishedCount})
-            </button>
-            <button
-              onClick={() => setFilterTab('drafts')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${filterTab === 'drafts' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'}`}
-            >
-              Drafts ({draftCount})
-            </button>
-          </div>
-
-          {/* Search & Add button */}
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search items..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-              />
+              {/* Admin Users — super admin only */}
+              {canManageAdmins && (
+                <button
+                  onClick={() => selectTab('admins')}
+                  className={sidebarNavClass(activeTab === 'admins')}
+                >
+                  <UserCog className="w-4 h-4 shrink-0" />
+                  <span className="flex-1 text-left">Admin Users</span>
+                  <span className={activeTab === 'admins' ? sidebarCountActiveClass : sidebarCountClass}>
+                    —
+                  </span>
+                </button>
+              )}
             </div>
 
-            <button
-              onClick={handleOpenAddModal}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-lg shadow-blue-600/20 transition-all hover:scale-105"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create Event / News</span>
-            </button>
-          </div>
+            {/* Filtered result counter */}
+            <p className="px-1 text-[11px] text-slate-600 dark:text-slate-500">
+              {activeTab === 'events'
+                ? `Showing ${filteredEvents.length} of ${events.length} events`
+                : activeTab === 'catalog'
+                  ? `Showing ${filteredCatalogs.length} of ${catalogs.length} services`
+                  : 'Manage who can sign in to this portal'}
+            </p>
+          </aside>
 
-        </div>
+          {/* --- ACTIVE SECTION CONTENT --- */}
+          <div className="space-y-6 min-w-0">
 
-        {/* Events Data Table */}
-        <div className="rounded-3xl bg-slate-900 border border-slate-800 shadow-xl overflow-hidden">
-          {loading ? (
-            <div className="p-16 text-center space-y-3">
-              <div className="w-10 h-10 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-slate-400 font-semibold">Loading admin data...</p>
+        {/* --- SECTION 1: EVENTS MANAGEMENT --- */}
+        {activeTab === 'events' && (
+          <div className="space-y-6">
+            {/* Search & Filter Bar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-slate-600 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={eventSearchQuery}
+                  onChange={(e) => setEventSearchQuery(e.target.value)}
+                  placeholder="Search events..."
+                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                {(['all', 'published', 'drafts'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setEventFilterTab(tab)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold capitalize transition-colors ${
+                      eventFilterTab === tab
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+
+                <button
+                  onClick={handleOpenAddEventModal}
+                  className="sm:ml-auto px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold transition-all shadow-md shadow-blue-600/20 flex items-center gap-2 active:scale-95 shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create New Event</span>
+                </button>
+              </div>
             </div>
-          ) : filteredEvents.length === 0 ? (
-            <div className="p-16 text-center space-y-3">
-              <Sparkles className="w-8 h-8 text-slate-600 mx-auto" />
-              <p className="text-sm font-bold text-slate-300">No events found</p>
-              <p className="text-xs text-slate-500">Click "Create Event / News" above to add your first item.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] font-extrabold tracking-wider border-b border-slate-800">
-                  <tr>
-                    <th className="py-4 px-6">Event & High-Priority Detail</th>
-                    <th className="py-4 px-4">Template</th>
-                    <th className="py-4 px-4">Event Date</th>
-                    <th className="py-4 px-4">Status</th>
-                    <th className="py-4 px-6 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {filteredEvents.map((evt) => (
-                    <tr key={evt.id} className="hover:bg-slate-800/40 transition-colors">
 
-                      {/* Event Title & Red Priority Detail */}
-                      <td className="py-4 px-6 space-y-1">
-                        <h4 className="font-bold text-sm text-white">{evt.title}</h4>
-                        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/60 border border-rose-800/80 text-rose-400 text-[10px] font-bold">
-                          <AlertCircle className="w-3 h-3 shrink-0" />
-                          <span>{evt.priorityDetail}</span>
+            {/* Events List */}
+            {loadingEvents ? (
+              <div className="py-20 text-center space-y-3">
+                <RefreshCw className="w-6 h-6 text-blue-500 animate-spin mx-auto" />
+                <p className="text-xs text-slate-600 dark:text-slate-400">Loading events...</p>
+              </div>
+            ) : filteredEvents.length === 0 ? (
+              <div className="py-16 text-center bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 space-y-2">
+                <p className="text-sm text-slate-700 dark:text-slate-300 font-bold">No events found</p>
+                <p className="text-xs text-slate-600 dark:text-slate-500">Create a new event using the button above.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredEvents.map((evt) => (
+                  <div
+                    key={evt.id}
+                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 flex flex-col justify-between space-y-4 hover:border-slate-700 transition-all shadow-xl"
+                  >
+                    <div className="space-y-3">
+                      {/* Image Preview */}
+                      {evt.images && evt.images.length > 0 && (
+                        <div className="h-36 rounded-2xl overflow-hidden bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative">
+                          <img
+                            src={evt.images[0]}
+                            alt={evt.title}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute top-2 right-2">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
+                              evt.published ? 'bg-blue-950 text-blue-400 border border-blue-800' : 'bg-amber-950 text-amber-400 border border-amber-800'
+                            }`}>
+                              {evt.published ? 'Published' : 'Draft'}
+                            </span>
+                          </div>
                         </div>
-                      </td>
+                      )}
 
-                      {/* Template Badge */}
-                      <td className="py-4 px-4 whitespace-nowrap">
-                        <span className="px-2.5 py-1 rounded-lg bg-blue-950/80 border border-blue-800 text-blue-300 font-extrabold text-[11px]">
-                          {evt.template.toUpperCase()}
-                        </span>
-                      </td>
+                      <h3 className="font-heading text-base font-extrabold text-slate-900 dark:text-white line-clamp-2">
+                        {evt.title}
+                      </h3>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
+                        {evt.priorityDetail}
+                      </p>
+                    </div>
 
-                      {/* Event Date */}
-                      <td className="py-4 px-4 whitespace-nowrap font-medium text-slate-300">
-                        {evt.date}
-                      </td>
+                    {/* Actions */}
+                    <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => handleTogglePublishEvent(evt)}
+                        className={`p-2 rounded-xl text-xs font-bold transition-colors ${
+                          evt.published ? 'text-blue-400 bg-blue-950/60' : 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800'
+                        }`}
+                        title={evt.published ? 'Unpublish' : 'Publish'}
+                      >
+                        {evt.published ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      </button>
 
-                      {/* Status Toggle Badge */}
-                      <td className="py-4 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleTogglePublish(evt)}
-                          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1 border transition-all ${evt.published
-                              ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800 hover:bg-emerald-900'
-                              : 'bg-amber-950/80 text-amber-400 border-amber-800 hover:bg-amber-900'
-                            }`}
+                          onClick={() => handleOpenEditEventModal(evt)}
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors flex items-center gap-1.5"
                         >
-                          {evt.published ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                          <span>{evt.published ? 'Published' : 'Draft'}</span>
-                        </button>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-4 px-6 text-right whitespace-nowrap space-x-2">
-                        <button
-                          onClick={() => handleOpenEditModal(evt)}
-                          className="p-2 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition-colors"
-                          title="Edit Event"
-                        >
-                          <Edit2 className="w-4 h-4" />
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>Edit</span>
                         </button>
 
                         <button
                           onClick={() => setDeletingEventId(evt.id)}
-                          className="p-2 rounded-lg bg-rose-950/60 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-900/50 transition-colors"
-                          title="Delete Event"
+                          className="px-3 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold transition-colors flex items-center gap-1.5"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
                         </button>
-                      </td>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* --- TAB 2: CATALOG MANAGEMENT --- */}
+        {activeTab === 'catalog' && (
+          <div className="space-y-6">
+            {/* Search & Category Filter Bar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-slate-600 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={catalogSearchQuery}
+                  onChange={(e) => setCatalogSearchQuery(e.target.value)}
+                  placeholder="Search catalog by title, details, or price..."
+                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                {['All', 'Taxation', 'Audit', 'Legal', 'Advisory', 'Accounting'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setCatalogCategoryFilter(cat)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors shrink-0 ${
+                      catalogCategoryFilter === cat
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+
+                <button
+                  onClick={handleOpenAddCatalogModal}
+                  className="sm:ml-auto px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold transition-all shadow-md shadow-blue-600/20 flex items-center gap-2 active:scale-95 shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Catalog Service</span>
+                </button>
+              </div>
             </div>
-          )}
+
+            {/* Catalog List — compact single-line rows */}
+            {loadingCatalogs ? (
+              <div className="py-20 text-center space-y-3">
+                <RefreshCw className="w-6 h-6 text-blue-500 animate-spin mx-auto" />
+                <p className="text-xs text-slate-600 dark:text-slate-400">Loading catalog items...</p>
+              </div>
+            ) : filteredCatalogs.length === 0 ? (
+              <div className="py-16 text-center bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 space-y-2">
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No catalog items found</p>
+                <p className="text-xs text-slate-600 dark:text-slate-500">Use the "Add Catalog Service" button above to create one.</p>
+              </div>
+            ) : (
+              <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-200 dark:divide-slate-800/70 overflow-hidden shadow-xl">
+                {filteredCatalogs.map((item) => (
+                  <div
+                    key={item.id}
+                    className="group flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-4 px-4 py-3 hover:bg-slate-100 dark:hover:bg-slate-900/80 transition-colors"
+                  >
+                    {/* Record ID */}
+                    <span className="hidden lg:block w-14 shrink-0 font-mono text-[10px] text-slate-600 dark:text-slate-500">
+                      {item.id}
+                    </span>
+
+                    {/* Title + Specification */}
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-heading text-sm font-extrabold text-slate-900 dark:text-white group-hover:text-blue-400 transition-colors truncate">
+                        {item.title}
+                      </h3>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate mt-0.5">
+                        {item.subtext || 'No additional details provided.'}
+                      </p>
+                    </div>
+
+                    {/* Category */}
+                    <span className="hidden md:inline-flex shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-blue-950 text-blue-400 border border-blue-800/80">
+                      {item.category || 'Taxation'}
+                    </span>
+
+                    {/* Price */}
+                    <div className="shrink-0 w-fit flex items-center gap-1 text-blue-400 font-extrabold text-xs bg-blue-950/60 px-2.5 py-1 rounded-xl border border-blue-800/60">
+                      <Tag className="w-3 h-3" />
+                      <span>{item.price}</span>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleOpenEditCatalogModal(item)}
+                        className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 text-slate-700 dark:text-slate-200 hover:text-white transition-colors"
+                        title="Edit service"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span className="sr-only">Edit {item.title}</span>
+                      </button>
+                      <button
+                        onClick={() => setDeletingCatalogId(item.id)}
+                        className="p-2 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 hover:text-rose-200 transition-colors"
+                        title="Delete service"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="sr-only">Delete {item.title}</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- SECTION 3: ADMIN USER MANAGEMENT (super admin only) --- */}
+        {canManageAdmins && activeTab === 'admins' && (
+          <AdminUsersPanel currentAdminId={adminId} onSessionEnded={onLogout} />
+        )}
+
+          </div>
         </div>
 
       </div>
 
-      {/* --- ADD / EDIT EVENT MODAL --- */}
+      {/* --- EVENT MODAL --- */}
       <AnimatePresence>
-        {isFormOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto">
+        {isEventFormOpen && (
+          <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 bg-slate-900/70 dark:bg-slate-950/80 backdrop-blur-md overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 my-8 max-h-[90vh] overflow-y-auto"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 w-full max-w-3xl my-4 max-h-[92vh] overflow-y-auto shadow-2xl space-y-6 relative"
             >
-              <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold">
-                    <Layout className="w-4 h-4" />
-                  </div>
-                  <h3 className="font-heading text-xl font-bold text-white">
-                    {editingEventId ? 'Edit Event / News Item' : 'Create New Event / News Item'}
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+                <div className="min-w-0">
+                  <h3 className="font-heading text-lg font-black text-slate-900 dark:text-white">
+                    {editingEventId ? 'Edit Event Announcement' : 'Create New Event Announcement'}
                   </h3>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                    Write your announcement content in Step 1, then add images in Step 2.
+                  </p>
                 </div>
                 <button
-                  onClick={() => setIsFormOpen(false)}
-                  className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white"
+                  onClick={() => setIsEventFormOpen(false)}
+                  className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white shrink-0"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {formError && (
-                <div className="p-4 rounded-2xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
+              {eventFormError && (
+                <div className="p-4 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                  <span>{formError}</span>
+                  <span>{eventFormError}</span>
                 </div>
               )}
 
-              <form onSubmit={handleSaveEvent} className="space-y-6">
+              <form onSubmit={handleSaveEvent} className="space-y-5">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Step 1 — Announcement Content</span>
+                </p>
 
-                {/* Title & Date Row */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="sm:col-span-2 space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-300 uppercase">
-                      Event Heading / Title *
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Event Title *</label>
+                  <input
+                    type="text"
+                    required
+                    value={eventFormData.title}
+                    onChange={(e) => setEventFormData({ ...eventFormData, title: e.target.value })}
+                    placeholder="e.g. Annual Tax Compliance Summit 2026"
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">High-Priority Short Detail (Banner Subtext) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={eventFormData.priorityDetail}
+                    onChange={(e) => setEventFormData({ ...eventFormData, priorityDetail: e.target.value })}
+                    placeholder="e.g. URGENT NOTICE: FBR Q3 Corporate Filing Deadline"
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Full Event Description *
                     </label>
+                    <span className="text-[10px] font-mono text-slate-600 dark:text-slate-400">
+                      {eventFormData.description.trim().length} characters
+                    </span>
+                  </div>
+                  <textarea
+                    required
+                    rows={7}
+                    value={eventFormData.description}
+                    onChange={(e) => setEventFormData({ ...eventFormData, description: e.target.value })}
+                    placeholder="Describe the event in full — topics covered, speakers, key dates, eligibility, and what attendees should bring or prepare..."
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                  />
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    This is the main body text shown on the published event card.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Event Date *</label>
                     <input
-                      type="text"
+                      type="date"
                       required
-                      placeholder="e.g. Annual Statutory Tax & Regulatory Summit 2026"
-                      value={formData.title}
-                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:border-blue-500 focus:outline-none"
+                      value={eventFormData.date}
+                      onChange={(e) => setEventFormData({ ...eventFormData, date: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-300 uppercase">
-                      Event Date *
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Publish Immediately?</label>
+                    <button
+                      type="button"
+                      onClick={() => setEventFormData({ ...eventFormData, published: !eventFormData.published })}
+                      className={`w-full py-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 border transition-all ${
+                        eventFormData.published
+                          ? 'bg-blue-950/80 text-blue-400 border-blue-800'
+                          : 'bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      <span>{eventFormData.published ? 'Published (Visible)' : 'Draft (Hidden)'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Image URL (Drive / external link) */}
+                <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span>Step 2 — Images</span>
+                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Event Images <span className="font-normal text-slate-500 dark:text-slate-500">(optional)</span>
                     </label>
+                    {eventFormData.images.length > 0 && (
+                      <span className="text-[10px] font-mono text-slate-600 dark:text-slate-400">
+                        {eventFormData.images.length} added
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
                     <input
-                      type="date"
-                      required
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:border-blue-500 focus:outline-none"
+                      type="url"
+                      value={imageUrlInput}
+                      onChange={(e) => setImageUrlInput(e.target.value)}
+                      placeholder="Paste Image URL (Unsplash, Drive, Imgur...)"
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
                     />
-                  </div>
-                </div>
-
-                {/* HIGH-PRIORITY SHORT DETAIL (RED PREVIEW) */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-rose-400 uppercase flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      <span>High-Priority Short Detail (Displayed in RED) *</span>
-                    </label>
-                    <span className="text-[10px] text-slate-400">Displayed prominently in red banner/text</span>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. URGENT: FBR & SECP Q3 Corporate Filing Deadline — September 15"
-                    value={formData.priorityDetail}
-                    onChange={(e) => setFormData({ ...formData, priorityDetail: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-rose-900/60 text-sm text-rose-300 focus:border-rose-500 focus:outline-none"
-                  />
-                  {/* Real-time RED preview */}
-                  {formData.priorityDetail && (
-                    <div className="p-2.5 rounded-lg bg-rose-950/60 border border-rose-800/60 text-rose-400 text-xs font-bold flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-rose-900 text-rose-200">Red Preview</span>
-                      <span>{formData.priorityDetail}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Full Description */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-300 uppercase">
-                    Full Description *
-                  </label>
-                  <textarea
-                    rows={4}
-                    required
-                    placeholder="Detailed information regarding the event, agenda, speakers, regulatory notes..."
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                {/* Image Upload & Management */}
-                <div className="space-y-3">
-                  <label className="block text-xs font-bold text-slate-300 uppercase flex items-center justify-between">
-                    <span>Event Images (One or Multiple)</span>
-                    <span className="text-[10px] text-slate-400">Upload files or paste URLs</span>
-                  </label>
-
-                  {/* Upload Controls */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* File Upload Dropzone Button */}
-                    <label className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-950 border-2 border-dashed border-slate-800 hover:border-blue-500 cursor-pointer transition-colors text-xs text-slate-300 font-bold">
-                      <Upload className="w-4 h-4 text-blue-400" />
-                      <span>{uploadingImage ? 'Uploading Image...' : 'Upload Image File(s)'}</span>
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/*"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        disabled={uploadingImage}
-                      />
-                    </label>
-
-                    {/* Image URL Input */}
-                    <div className="flex gap-2">
-                      <input
-                        type="url"
-                        placeholder="https://images.unsplash.com/..."
-                        value={imageUrlInput}
-                        onChange={(e) => setImageUrlInput(e.target.value)}
-                        className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:border-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddImageUrl}
-                        className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white shrink-0"
-                      >
-                        Add URL
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddImageUrl}
+                      className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-900 dark:text-white"
+                    >
+                      Add URL
+                    </button>
                   </div>
 
-                  {/* Thumbnail List */}
-                  {formData.images.length > 0 && (
-                    <div className="flex items-center gap-3 overflow-x-auto pt-2">
-                      {formData.images.map((img, idx) => (
-                        <div key={idx} className="relative w-20 h-16 rounded-xl overflow-hidden border border-slate-700 group shrink-0">
-                          <img src={img} alt={`uploaded ${idx}`} className="w-full h-full object-cover" />
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Images are not stored on this server. Paste a public image link (Google Drive, Imgur, Unsplash...).
+                  </p>
+
+                  {/* Linked Images List */}
+                  {eventFormData.images.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {eventFormData.images.map((img, idx) => (
+                        <div key={idx} className="w-16 h-16 rounded-xl overflow-hidden relative group border border-slate-200 dark:border-slate-800">
+                          <img src={img} alt="preview" className="w-full h-full object-cover" />
                           <button
                             type="button"
                             onClick={() => handleRemoveImage(idx)}
-                            className="absolute top-1 right-1 p-1 rounded-full bg-rose-600 text-white opacity-90 hover:opacity-100 transition-opacity"
+                            className="absolute top-1 right-1 p-0.5 bg-rose-600 text-white rounded-md text-[10px]"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -642,94 +882,180 @@ export const AdminDashboard: React.FC<Props> = ({ adminEmail, onLogout, onNaviga
                   )}
                 </div>
 
-                {/* TEMPLATE SELECTION WITH VISUAL PREVIEWS */}
-                <TemplateSelector
-                  selectedTemplate={formData.template}
-                  onChange={(t) => setFormData({ ...formData, template: t })}
-                />
-
-                {/* Publish Toggle */}
-                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="font-bold text-xs text-white">Publish Status</span>
-                    <p className="text-[11px] text-slate-400">
-                      When published, this event will instantly appear in the live website gallery.
-                    </p>
-                  </div>
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, published: !formData.published })}
-                    className={`px-4 py-2 rounded-full text-xs font-extrabold transition-all border ${formData.published
-                        ? 'bg-emerald-600 text-white border-emerald-500'
-                        : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}
-                  >
-                    {formData.published ? 'Published (Live)' : 'Draft (Hidden)'}
-                  </button>
-                </div>
-
-                {/* Submit Controls */}
-                <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsFormOpen(false)}
-                    className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300"
+                    onClick={() => setIsEventFormOpen(false)}
+                    className="px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300"
                   >
                     Cancel
                   </button>
-
                   <button
                     type="submit"
-                    disabled={submitting}
-                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-xs font-extrabold text-white shadow-lg shadow-blue-600/20"
+                    disabled={submittingEvent}
+                    className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-extrabold text-white shadow-lg shadow-blue-600/30"
                   >
-                    {submitting ? 'Saving Event...' : editingEventId ? 'Update Event' : 'Publish New Event'}
+                    {submittingEvent ? 'Saving...' : editingEventId ? 'Update Event' : 'Create Event'}
                   </button>
                 </div>
-
               </form>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* --- DELETE CONFIRMATION MODAL --- */}
+      {/* --- CATALOG MODAL --- */}
       <AnimatePresence>
-        {deletingEventId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+        {isCatalogFormOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 dark:bg-slate-950/80 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 text-center shadow-2xl"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 w-full max-w-lg shadow-2xl space-y-6 relative"
             >
-              <div className="w-12 h-12 rounded-2xl bg-rose-950/80 text-rose-400 border border-rose-800 flex items-center justify-center mx-auto">
-                <Trash2 className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-heading text-lg font-bold text-white">Permanently Delete Event?</h3>
-                <p className="text-xs text-slate-400">
-                  This action cannot be undone. The item will be permanently removed from the database.
-                </p>
-              </div>
-              <div className="flex items-center justify-center gap-3 pt-2">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+                <h3 className="font-heading text-lg font-black text-slate-900 dark:text-white">
+                  {editingCatalogId ? 'Edit Catalog Service' : 'Add New Catalog Service'}
+                </h3>
                 <button
-                  onClick={() => setDeletingEventId(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-xs font-bold text-slate-300 hover:bg-slate-700"
+                  onClick={() => setIsCatalogFormOpen(false)}
+                  className="p-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteConfirm}
-                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold text-white shadow-md"
-                >
-                  Confirm Delete
+                  <X className="w-5 h-5" />
                 </button>
               </div>
+
+              {catalogFormError && (
+                <div className="p-4 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{catalogFormError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveCatalog} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Service Title *</label>
+                  <input
+                    type="text"
+                    required
+                    value={catalogFormData.title}
+                    onChange={(e) => setCatalogFormData({ ...catalogFormData, title: e.target.value })}
+                    placeholder="e.g. Audited Financials"
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Subtext / Specification Details</label>
+                  <input
+                    type="text"
+                    value={catalogFormData.subtext}
+                    onChange={(e) => setCatalogFormData({ ...catalogFormData, subtext: e.target.value })}
+                    placeholder="e.g. Annual with UDIN from QCR Rated Firm for Company"
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Price (PKR) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={catalogFormData.price}
+                      onChange={(e) => setCatalogFormData({ ...catalogFormData, price: e.target.value })}
+                      placeholder="e.g. PKR 150,000"
+                      className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Category</label>
+                    <select
+                      value={catalogFormData.category}
+                      onChange={(e) => setCatalogFormData({ ...catalogFormData, category: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="Taxation">Taxation</option>
+                      <option value="Audit">Audit</option>
+                      <option value="Legal">Legal</option>
+                      <option value="Advisory">Advisory</option>
+                      <option value="Accounting">Accounting</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsCatalogFormOpen(false)}
+                    className="px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingCatalog}
+                    className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-extrabold text-white shadow-lg shadow-blue-600/30"
+                  >
+                    {submittingCatalog ? 'Saving...' : editingCatalogId ? 'Update Service' : 'Add Service'}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      {/* --- DELETE CONFIRMATION MODALS --- */}
+      {deletingEventId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 dark:bg-slate-950/80 backdrop-blur-md">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-sm text-center space-y-4 shadow-2xl">
+            <Trash2 className="w-10 h-10 text-rose-500 mx-auto" />
+            <h4 className="font-heading text-lg font-bold text-slate-900 dark:text-white">Delete Event Announcement?</h4>
+            <p className="text-xs text-slate-600 dark:text-slate-400">This action cannot be undone.</p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => setDeletingEventId(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteEvent(deletingEventId)}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold text-white"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletingCatalogId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 dark:bg-slate-950/80 backdrop-blur-md">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 w-full max-w-sm text-center space-y-4 shadow-2xl">
+            <Trash2 className="w-10 h-10 text-rose-500 mx-auto" />
+            <h4 className="font-heading text-lg font-bold text-slate-900 dark:text-white">Delete Catalog Service?</h4>
+            <p className="text-xs text-slate-600 dark:text-slate-400">This service will be removed from your catalog.</p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => setDeletingCatalogId(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteCatalog(deletingCatalogId)}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold text-white"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

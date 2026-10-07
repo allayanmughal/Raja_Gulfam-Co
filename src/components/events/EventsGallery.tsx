@@ -1,10 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { EventItem } from '../../types/event';
 import { EventCard } from './EventCard';
-import { Newspaper, Search, RefreshCw, AlertCircle, Sparkles } from 'lucide-react';
+import { Search, RefreshCw, AlertCircle, Sparkles, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-export const EventsGallery: React.FC = () => {
+interface EventsGalleryProps {
+  /** Cap the number of rendered items. Omit to render every published event. */
+  limit?: number;
+  /** Show the search + refresh toolbar. Useful when rendering the full list. */
+  showToolbar?: boolean;
+  /** When provided, renders a CTA that routes to the full news page. */
+  onViewAll?: () => void;
+  title?: React.ReactNode;
+  subtitle?: string;
+}
+
+export const EventsGallery: React.FC<EventsGalleryProps> = ({
+  limit,
+  showToolbar = false,
+  onViewAll,
+  title = (
+    <>
+      Official News, Events &{' '}
+      <span className="text-blue-600 dark:text-blue-400">Compliance Radar</span>.
+    </>
+  ),
+  subtitle = 'Stay ahead of FBR, SECP, and HMRC statutory deadlines, financial advisory bulletins, and executive events published directly by Raja Gulfam & Co.'
+}) => {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,15 +56,29 @@ export const EventsGallery: React.FC = () => {
     fetchEvents();
   }, []);
 
-  const filteredEvents = events.filter((evt) => {
-    const q = searchQuery.toLowerCase();
+  // Newest first so the homepage preview always surfaces the latest updates.
+  const sortedEvents = useMemo(
+    () =>
+      [...events].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      ),
+    [events]
+  );
+
+  const filteredEvents = sortedEvents.filter((evt) => {
+    const q = searchQuery.trim().toLowerCase();
     return (
+      !q ||
       evt.title.toLowerCase().includes(q) ||
-      evt.priorityDetail.toLowerCase().includes(q) ||
-      evt.description.toLowerCase().includes(q) ||
-      evt.date.includes(q)
+      (evt.priorityDetail || '').toLowerCase().includes(q) ||
+      (evt.description || '').toLowerCase().includes(q) ||
+      (evt.date || '').toLowerCase().includes(q)
     );
   });
+
+  const visibleEvents = typeof limit === 'number' ? filteredEvents.slice(0, limit) : filteredEvents;
+  const hiddenCount = filteredEvents.length - visibleEvents.length;
+  const showViewAll = typeof onViewAll === 'function' && filteredEvents.length > 0;
 
   return (
     <section className="py-20 relative z-20 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/80 transition-colors">
@@ -51,21 +87,17 @@ export const EventsGallery: React.FC = () => {
         {/* Section Title Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 dark:border-slate-800/80 pb-8">
           <div className="space-y-3 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-xs font-bold uppercase tracking-wider">
-              <Newspaper className="w-3.5 h-3.5" />
-              <span>Live Updates & Statutory Alerts</span>
-            </div>
-
             <h2 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-              Official News, Events & <span className="text-blue-600 dark:text-blue-400">Compliance Radar</span>.
+              {title}
             </h2>
 
             <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-              Stay ahead of FBR, SECP, and HMRC statutory deadlines, financial advisory bulletins, and executive events published directly by Raja Gulfam & Co.
+              {subtitle}
             </p>
           </div>
 
           {/* Search bar & Refresh */}
+          {showToolbar && (
           <div className="flex items-center gap-3">
             <div className="relative min-w-[240px] sm:min-w-[280px]">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -86,6 +118,7 @@ export const EventsGallery: React.FC = () => {
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-500' : ''}`} />
             </button>
           </div>
+          )}
         </div>
 
         {/* Loading State */}
@@ -125,20 +158,39 @@ export const EventsGallery: React.FC = () => {
           </div>
         )}
 
-        {/* Dynamic Responsive Events Grid */}
-        {!loading && !error && filteredEvents.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredEvents.map((evt, index) => (
+        {/* Dynamic Responsive Events Grid — single column: the card is a wide
+            image-left / description-right layout. */}
+        {!loading && !error && visibleEvents.length > 0 && (
+          <div className="grid grid-cols-1 gap-6">
+            {visibleEvents.map((evt, index) => (
               <motion.div
                 key={evt.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: index * 0.05 }}
-                className={evt.template === 'template1' || evt.template === 'template5' ? 'md:col-span-2 lg:col-span-2' : ''}
               >
                 <EventCard event={evt} />
               </motion.div>
             ))}
+          </div>
+        )}
+
+        {/* View all news & events CTA */}
+        {showViewAll && !loading && !error && (
+          <div className="flex flex-col items-center gap-3 pt-2 text-center">
+            <button
+              onClick={onViewAll}
+              className="group inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base shadow-xl shadow-blue-600/25 transition-all hover:scale-105 active:scale-95"
+            >
+              <span>View All News &amp; Events</span>
+              <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+            </button>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {hiddenCount > 0
+                ? `Showing ${visibleEvents.length} of ${filteredEvents.length} published updates`
+                : `${filteredEvents.length} published ${filteredEvents.length === 1 ? 'update' : 'updates'} in total`}
+            </p>
           </div>
         )}
 

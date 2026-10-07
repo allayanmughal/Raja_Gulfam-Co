@@ -14,6 +14,8 @@ import { Footer } from './components/Footer';
 import { BookingModal } from './components/BookingModal';
 import { FAQPage } from './components/FAQPage';
 import { TeamMembersPage } from './components/TeamMembersPage';
+import { CatalogPage } from './components/CatalogPage';
+import { NewsPage } from './components/NewsPage';
 import type { Region, PageView } from './types';
 
 export function App() {
@@ -25,6 +27,8 @@ export function App() {
   // Auth state for Admin
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
+  const [adminId, setAdminId] = useState('');
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
 
   const checkAuthStatus = async () => {
@@ -35,12 +39,18 @@ export function App() {
       if (data.authenticated) {
         setIsAuthenticated(true);
         setAdminEmail(data.admin?.username || 'Admin');
+        setAdminId(data.admin?.id || '');
+        setIsSuperAdmin(Boolean(data.admin?.isSuper));
       } else {
         setIsAuthenticated(false);
         setAdminEmail('');
+        setAdminId('');
+        setIsSuperAdmin(false);
       }
     } catch (err) {
       setIsAuthenticated(false);
+      setAdminId('');
+      setIsSuperAdmin(false);
     } finally {
       setAuthChecking(false);
     }
@@ -89,32 +99,6 @@ export function App() {
     setIsBookingOpen(true);
   };
 
-  const scrollToServices = () => {
-    if (currentPage !== 'home') {
-      handleNavigate('home');
-      setTimeout(() => {
-        const el = document.getElementById('services');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
-    } else {
-      const el = document.getElementById('services');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const scrollToNews = () => {
-    if (currentPage !== 'home') {
-      handleNavigate('home');
-      setTimeout(() => {
-        const el = document.getElementById('news');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
-    } else {
-      const el = document.getElementById('news');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
   const scrollToCalculator = () => {
     if (currentPage !== 'home') {
       handleNavigate('home');
@@ -139,8 +123,6 @@ export function App() {
           onSelectRegion={setSelectedRegion}
           onNavigate={handleNavigate}
           currentPage={currentPage}
-          onScrollToServices={scrollToServices}
-          onScrollToNews={scrollToNews}
         />
       )}
 
@@ -158,14 +140,18 @@ export function App() {
             <ServicesGrid
               onOpenBookingWithService={handleOpenBookingWithService}
               selectedRegion={selectedRegion}
+              onNavigateCatalog={() => handleNavigate('catalog')}
             />
 
-            {/* DYNAMIC EVENTS, NEWS & UPDATES GALLERY */}
+            {/* DYNAMIC EVENTS, NEWS & UPDATES PREVIEW (latest 2) */}
             <div id="news">
-              <EventsGallery />
+              <EventsGallery
+                limit={2}
+                onViewAll={() => handleNavigate('news')}
+              />
             </div>
 
-            {/* Statutory Compliance Radar */}
+            {/* Tax Deadlines Radar */}
             <TaxCalendar />
 
             {/* Proven Case Studies */}
@@ -180,6 +166,17 @@ export function App() {
             {/* Contact Section */}
             <ContactSection />
           </>
+        )}
+
+        {currentPage === 'catalog' && (
+          <CatalogPage
+            onNavigateHome={() => handleNavigate('home')}
+            onOpenBookingWithService={handleOpenBookingWithService}
+          />
+        )}
+
+        {currentPage === 'news' && (
+          <NewsPage onNavigateHome={() => handleNavigate('home')} />
         )}
 
         {currentPage === 'faqs' && (
@@ -207,9 +204,13 @@ export function App() {
             ) : isAuthenticated ? (
               <AdminDashboard
                 adminEmail={adminEmail}
+                adminId={adminId}
+                isSuperAdmin={isSuperAdmin}
                 onLogout={() => {
                   setIsAuthenticated(false);
                   setAdminEmail('');
+                  setAdminId('');
+                  setIsSuperAdmin(false);
                 }}
                 onNavigateHome={() => handleNavigate('home')}
               />

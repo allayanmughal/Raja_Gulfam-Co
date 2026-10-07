@@ -12,29 +12,29 @@ interface HeroProps {
 
 export const Hero: React.FC<HeroProps> = ({ onOpenBooking, onOpenCalculator }) => {
   return (
-    <section className="relative min-h-screen lg:h-screen lg:max-h-screen pt-20 pb-4 md:pt-20 md:pb-5 overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white transition-colors flex flex-col justify-between">
+    <section className="relative min-h-screen lg:min-h-screen pt-24 pb-4 md:pt-28 md:pb-5 overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white transition-colors flex flex-col justify-between">
 
       {/* Background 3D WebGL Canvas Layer */}
       <ThreeCanvas />
 
       {/* Ambient Neon Lighting Effects */}
       <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-blue-500/10 dark:bg-blue-600/20 rounded-full blur-3xl pointer-events-none -z-0" />
-      <div className="absolute bottom-6 right-6 w-72 h-72 bg-emerald-500/10 dark:bg-emerald-500/15 rounded-full blur-3xl pointer-events-none -z-0" />
+      <div className="absolute bottom-6 right-6 w-72 h-72 bg-blue-500/10 dark:bg-blue-500/15 rounded-full blur-3xl pointer-events-none -z-0" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full flex-1 flex flex-col justify-between">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center flex-1 my-auto py-2">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-center flex-1 my-auto py-1">
 
           {/* Left Hero Content */}
           <motion.div
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, ease: [0.21, 1.11, 0.81, 0.99] }}
-            className="lg:col-span-7 space-y-3.5 text-left"
+            className="lg:col-span-7 space-y-3 text-left"
           >
             {/* Dynamic Headline */}
             <h1 className="font-heading text-2xl sm:text-3xl lg:text-[40px] xl:text-[42px] font-extrabold tracking-tight leading-[1.16] text-slate-900 dark:text-white">
               Strategic Financial Precision.{' '}
-              <span className="bg-gradient-to-r from-blue-600 via-blue-500 to-emerald-600 dark:from-blue-400 dark:via-cyan-300 dark:to-emerald-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-600 dark:from-blue-400 dark:via-cyan-300 dark:to-blue-400 bg-clip-text text-transparent">
                 Bulletproof Legal Defense.
               </span>
             </h1>
@@ -45,7 +45,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking, onOpenCalculator }) =
             </p>
 
             {/* Prominent Eye-Catching Urgent Deadline & Fine Warning Ticker */}
-            <div className="w-full max-w-xl p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-rose-500/20 via-rose-500/10 to-amber-500/15 border-2 border-rose-500/60 shadow-[0_0_25px_rgba(244,63,94,0.25)] backdrop-blur-md flex items-center gap-3.5 my-2">
+            <div className="w-full max-w-xl p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-rose-500/20 via-rose-500/10 to-amber-500/15 border-2 border-rose-500/60 shadow-[0_0_25px_rgba(244,63,94,0.25)] backdrop-blur-md flex items-center gap-3.5 my-1 sm:my-1.5">
               <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-500 flex items-center justify-center shrink-0 shadow-inner">
                 <AlertTriangle className="w-5.5 h-5.5 text-rose-500 animate-bounce" />
               </div>
@@ -99,12 +99,12 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking, onOpenCalculator }) =
               <img
                 src="/images/portrait_light.jpg"
                 alt="Raja Gulfam Kayani"
-                className="w-full h-[320px] sm:h-[380px] lg:h-[420px] xl:h-[450px] object-cover object-top transition-transform duration-700 group-hover:scale-105 dark:hidden"
+                className="w-full h-[280px] sm:h-[340px] lg:h-[370px] xl:h-[390px] object-cover object-top transition-transform duration-700 group-hover:scale-105 dark:hidden"
               />
               <img
                 src="/images/portrait_dark.png"
                 alt="Raja Gulfam Kayani"
-                className="w-full h-[320px] sm:h-[380px] lg:h-[420px] xl:h-[450px] object-cover object-top transition-transform duration-700 group-hover:scale-105 hidden dark:block"
+                className="w-full h-[280px] sm:h-[340px] lg:h-[370px] xl:h-[390px] object-cover object-top transition-transform duration-700 group-hover:scale-105 hidden dark:block"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-85" />
 
@@ -148,13 +148,13 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking, onOpenCalculator }) =
           <motion.div
             whileHover={{ y: -4, scale: 1.02 }}
             transition={{ type: "spring", stiffness: 400, damping: 17 }}
-            className="p-3 sm:p-3.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/90 dark:border-slate-800/90 flex items-center gap-3 shadow-xs hover:shadow-md hover:border-emerald-500/50 dark:hover:border-emerald-400/50 transition-all duration-300 cursor-pointer group backdrop-blur-sm"
+            className="p-3 sm:p-3.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/90 dark:border-slate-800/90 flex items-center gap-3 shadow-xs hover:shadow-md hover:border-blue-500/50 dark:hover:border-blue-400/50 transition-all duration-300 cursor-pointer group backdrop-blur-sm"
           >
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+              <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="text-left">
-              <span className="block text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white leading-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">PKR 50M+</span>
+              <span className="block text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white leading-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">PKR 50M+</span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400">Tax Savings Claimed</span>
             </div>
           </motion.div>

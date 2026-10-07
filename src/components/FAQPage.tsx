@@ -105,7 +105,7 @@ export const FAQPage: React.FC<FAQPageProps> = ({ onOpenBooking, onNavigateHome 
 
   const handleWhatsApp = () => {
     const message = encodeURIComponent("Hello Raja Gulfam & Co., I have a specific tax/legal question and would like assistance.");
-    window.open(`https://wa.me/923121850063?text=${message}`, '_blank');
+    window.open(`https://wa.me/923348972072?text=${message}`, '_blank');
   };
 
   return (
@@ -125,11 +125,6 @@ export const FAQPage: React.FC<FAQPageProps> = ({ onOpenBooking, onNavigateHome 
 
         {/* Hero Section */}
         <div className="text-center max-w-3xl mx-auto mb-12 space-y-4">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-100 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-400 text-xs font-bold uppercase tracking-wider">
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>Client Support & Knowledge Base</span>
-          </div>
-
           <h1 className="font-heading text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white">
             Frequently Asked <span className="text-blue-600 dark:text-blue-400">Questions</span>
           </h1>
@@ -241,18 +236,18 @@ export const FAQPage: React.FC<FAQPageProps> = ({ onOpenBooking, onNavigateHome 
 
             <button
               onClick={handleWhatsApp}
-              className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition-all flex items-center gap-2"
+              className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg transition-all flex items-center gap-2"
             >
               <MessageSquare className="w-4 h-4" />
               <span>WhatsApp Direct Desk</span>
             </button>
 
             <a
-              href="tel:+923121850063"
+              href="tel:+923348972072"
               className="px-6 py-3 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs border border-slate-200 dark:border-slate-700 transition-all flex items-center gap-2 shadow-xs"
             >
               <Phone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <span>Call +92 312 1850063</span>
+              <span>Call +92 334 8972072</span>
             </a>
           </div>
         </div>

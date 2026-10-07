@@ -1,5 +1,15 @@
 export type Region = 'PK' | 'UK' | 'USA' | 'GULF' | 'GLOBAL';
-export type PageView = 'home' | 'faqs' | 'team' | 'admin';
+export type PageView = 'home' | 'faqs' | 'team' | 'admin' | 'catalog' | 'news';
+
+export interface CatalogItem {
+  id: string;
+  title: string;
+  subtext: string;
+  price: string;
+  category?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface ServiceItem {
   id: string;
@@ -12,6 +22,18 @@ export interface ServiceItem {
   jurisdictions: Region[];
   benefits: string[];
   deliverables: string[];
+}
+
+export type AdminRole = 'admin' | 'viewer';
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: AdminRole;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  lastLoginAt: string | null;
 }
 
 export interface TaxEstimationParams {

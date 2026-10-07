@@ -8,6 +8,18 @@ interface BookingModalProps {
   initialService?: string;
 }
 
+// Raja Gulfam & Co. direct WhatsApp desk (international format, no "+" or spaces).
+const WHATSAPP_NUMBER = '923348972072';
+
+/** Turn the <input type="date"> value (YYYY-MM-DD) into something readable. */
+const formatPreferredDate = (value: string) => {
+  if (!value) return 'Earliest Available';
+  // Anchor to local midnight so the day never slips backwards on UTC offsets.
+  const d = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
 export const BookingModal: React.FC<BookingModalProps> = ({
   isOpen,
   onClose,
@@ -35,6 +47,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Open WhatsApp synchronously inside the click gesture — doing this after an
+    // await would trip browser popup blockers and silently do nothing.
+    openWhatsApp();
+
     setSubmitted(true);
 
     confetti({
@@ -44,11 +61,41 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     });
   };
 
-  const handleWhatsAppRedirect = () => {
-    const text = encodeURIComponent(
-      `Hello Raja Gulfam & Co.,\n\nI would like to schedule a consultation.\n\n*Name:* ${fullName || 'Client'}\n*Service:* ${selectedService}\n*Jurisdiction:* ${jurisdiction}\n*Date:* ${preferredDate || 'Earliest Available'} (${preferredTime})\n*Notes:* ${notes || 'N/A'}`
+  /** Every field the customer filled in, laid out for WhatsApp (which renders *bold*). */
+  const buildWhatsAppMessage = () => {
+    const lines = [
+      '*New Consultation Request*',
+      '_Raja Gulfam & Co. — Website Booking Form_',
+      '',
+      '*Client Details*',
+      `Name: ${fullName || 'N/A'}`,
+      `Email: ${email || 'N/A'}`,
+      `Phone: ${phone || 'N/A'}`,
+    ];
+
+    // Only list optional fields the customer actually filled in.
+    if (businessName.trim()) lines.push(`Company: ${businessName.trim()}`);
+
+    lines.push(
+      '',
+      '*Consultation Details*',
+      `Service: ${selectedService}`,
+      `Jurisdiction: ${jurisdiction}`,
+      `Preferred Date: ${formatPreferredDate(preferredDate)}`,
+      `Preferred Time: ${preferredTime}`,
+      '',
+      '*Requirements / Questions*',
+      notes.trim() || 'No additional details provided.',
+      '',
+      '_Sent from the Raja Gulfam & Co. website_'
     );
-    window.open(`https://wa.me/923121850063?text=${text}`, '_blank');
+
+    return lines.join('\n');
+  };
+
+  const openWhatsApp = () => {
+    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildWhatsAppMessage())}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const resetAndClose = () => {
@@ -267,27 +314,27 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         ) : (
           /* Confirmation Success State */
           <div className="text-center py-8 space-y-6 animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/40 flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/40 flex items-center justify-center">
               <CheckCircle2 className="w-10 h-10" />
             </div>
 
             <div className="space-y-2">
               <h2 className="font-heading text-2xl font-extrabold text-slate-900 dark:text-white">
-                Consultation Request Received!
+                Your Details Are Ready to Send
               </h2>
               <p className="text-xs text-slate-600 dark:text-slate-300 max-w-md mx-auto">
-                Thank you <span className="text-blue-600 dark:text-blue-400 font-bold">{fullName}</span>. <strong className="text-slate-900 dark:text-white">Raja Gulfam Kayani</strong> and our senior tax advisory desk will review your details and confirm your appointment slot.
+                WhatsApp should have opened in a new tab with your booking details filled in, addressed to <strong className="text-slate-900 dark:text-white">Raja Gulfam Kayani</strong>'s desk. Just press <strong className="text-slate-900 dark:text-white">Send</strong> to deliver it.
               </p>
             </div>
 
             <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 max-w-md mx-auto space-y-3 shadow-xs">
-              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Want faster instant confirmation?</p>
+              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Didn't open, or the message looked wrong?</p>
               <button
-                onClick={handleWhatsAppRedirect}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg flex items-center justify-center gap-2 transition-all"
+                onClick={openWhatsApp}
+                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg flex items-center justify-center gap-2 transition-all"
               >
                 <MessageSquare className="w-4 h-4" />
-                <span>Send Booking Details to Raja Gulfam via WhatsApp</span>
+                <span>Open WhatsApp Message Again</span>
               </button>
             </div>
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { caseStudiesData } from '../data/testimonialsData';
-import { Award, TrendingUp, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface CaseStudiesProps {
@@ -24,11 +24,6 @@ export const CaseStudies: React.FC<CaseStudiesProps> = ({ onOpenBooking }) => {
           transition={{ duration: 0.6 }}
           className="text-center space-y-3 max-w-3xl mx-auto mb-12"
         >
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-xs font-semibold uppercase tracking-wider">
-            <Award className="w-3.5 h-3.5" />
-            <span>Proven Results</span>
-          </div>
-
           <h2 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">
             Client Success <span className="text-blue-600 dark:text-blue-400">Case Studies</span>
           </h2>
@@ -59,7 +54,7 @@ export const CaseStudies: React.FC<CaseStudiesProps> = ({ onOpenBooking }) => {
                     <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
                       {item.clientIndustry}
                     </span>
-                    <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
+                    <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400">
                       {item.metric}
                     </span>
                   </div>
@@ -120,7 +115,7 @@ export const CaseStudies: React.FC<CaseStudiesProps> = ({ onOpenBooking }) => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {activeCase.results.map((res, idx) => (
                     <div key={idx} className="p-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2 shadow-xs">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                      <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                       <span>{res}</span>
                     </div>
                   ))}

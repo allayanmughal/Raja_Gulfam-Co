@@ -28,10 +28,3 @@ export interface CreateEventInput {
   template: EventTemplateType;
   published: boolean;
 }
-
-export interface TemplateDefinition {
-  id: EventTemplateType;
-  name: string;
-  subtitle: string;
-  description: string;
-}

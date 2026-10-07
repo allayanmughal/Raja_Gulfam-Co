@@ -20,11 +20,11 @@ export const LiveCountdownTimer: React.FC = () => {
   }, []);
 
   return (
-    <div className="relative p-6 sm:p-7 rounded-3xl bg-slate-950 border-2 border-rose-500/70 shadow-2xl shadow-rose-950/40 space-y-5 text-center transition-all overflow-hidden text-white">
+    <div className="tc-panel max-lg:space-y-7 max-lg:p-8 sm:max-lg:p-12 relative rounded-3xl bg-slate-950 border-2 border-rose-500/70 shadow-2xl shadow-rose-950/40 text-center transition-all overflow-hidden text-white">
       
       {/* Top Alarming Badge */}
-      <div className="flex flex-col items-center gap-2">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-400 text-[11px] font-extrabold uppercase tracking-widest">
+      <div className="tc-badge-group flex flex-col items-center max-lg:gap-3">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-400 text-[11px] font-extrabold uppercase tracking-widest">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
@@ -39,40 +39,40 @@ export const LiveCountdownTimer: React.FC = () => {
       </div>
 
       {/* High-Contrast Digital Countdown Grid */}
-      <div className="grid grid-cols-4 gap-2.5 sm:gap-3 max-w-md mx-auto relative z-10">
+      <div className="tc-panel-grid grid grid-cols-4 max-lg:gap-3 sm:max-lg:gap-4 max-w-md mx-auto relative z-10">
         
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center shadow-inner">
-          <span className="font-heading text-2xl sm:text-3xl font-black text-amber-400 font-mono tracking-tight drop-shadow-[0_0_8px_rgba(251,191,36,0.3)]">
+        <div className="tc-cell max-lg:p-6 sm:max-lg:p-8 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center shadow-inner">
+          <span className="tc-digit font-heading max-lg:text-4xl sm:max-lg:text-5xl font-black text-amber-400 font-mono tracking-tight drop-shadow-[0_0_8px_rgba(251,191,36,0.3)]">
             {String(timeLeft.days).padStart(2, '0')}
           </span>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Days</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Days</p>
         </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center shadow-inner">
-          <span className="font-heading text-2xl sm:text-3xl font-black text-amber-400 font-mono tracking-tight drop-shadow-[0_0_8px_rgba(251,191,36,0.3)]">
+        <div className="tc-cell max-lg:p-6 sm:max-lg:p-8 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center shadow-inner">
+          <span className="tc-digit font-heading max-lg:text-4xl sm:max-lg:text-5xl font-black text-amber-400 font-mono tracking-tight drop-shadow-[0_0_8px_rgba(251,191,36,0.3)]">
             {String(timeLeft.hours).padStart(2, '0')}
           </span>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Hours</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Hours</p>
         </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center shadow-inner">
-          <span className="font-heading text-2xl sm:text-3xl font-black text-amber-400 font-mono tracking-tight drop-shadow-[0_0_8px_rgba(251,191,36,0.3)]">
+        <div className="tc-cell max-lg:p-6 sm:max-lg:p-8 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center shadow-inner">
+          <span className="tc-digit font-heading max-lg:text-4xl sm:max-lg:text-5xl font-black text-amber-400 font-mono tracking-tight drop-shadow-[0_0_8px_rgba(251,191,36,0.3)]">
             {String(timeLeft.minutes).padStart(2, '0')}
           </span>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Mins</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Mins</p>
         </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-rose-950/40 border border-rose-900/80 flex flex-col items-center justify-center shadow-inner">
-          <span className="font-heading text-2xl sm:text-3xl font-black text-rose-500 font-mono tracking-tight animate-pulse drop-shadow-[0_0_10px_rgba(244,63,94,0.7)]">
+        <div className="tc-cell max-lg:p-6 sm:max-lg:p-8 rounded-2xl bg-rose-950/40 border border-rose-900/80 flex flex-col items-center justify-center shadow-inner">
+          <span className="tc-digit font-heading max-lg:text-4xl sm:max-lg:text-5xl font-black text-rose-500 font-mono tracking-tight animate-pulse drop-shadow-[0_0_10px_rgba(244,63,94,0.7)]">
             {String(timeLeft.seconds).padStart(2, '0')}
           </span>
-          <p className="text-[10px] text-rose-400 font-bold uppercase tracking-widest mt-0.5">Secs</p>
+          <p className="text-[10px] text-rose-400 font-bold uppercase tracking-widest mt-1">Secs</p>
         </div>
 
       </div>
 
       {/* Warning Notice Banner */}
-      <div className="p-2.5 px-3.5 rounded-xl bg-rose-950/50 border border-rose-900/60 text-rose-300 text-[11px] font-semibold flex items-center justify-center gap-2">
+      <div className="p-3.5 px-4 rounded-xl bg-rose-950/50 border border-rose-900/60 text-rose-300 text-[11px] font-semibold flex items-center justify-center gap-2">
         <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
         <span>Late filings face PKR 40,000 penalty & Active Filer revocation</span>
       </div>
@@ -84,7 +84,7 @@ export const LiveCountdownTimer: React.FC = () => {
       >
         {reminderSet ? (
           <>
-            <CheckCircle className="w-4 h-4 text-emerald-300" />
+            <CheckCircle className="w-4 h-4 text-blue-300" />
             <span>Priority Filing Reminder Activated</span>
           </>
         ) : (
