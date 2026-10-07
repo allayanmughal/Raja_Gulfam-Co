@@ -402,6 +402,10 @@ export const AdminUsersPanel: React.FC<Props> = ({ currentAdminId, onSessionEnde
                   <input
                     type="email"
                     required
+                    // Never let the browser drop your own saved identity into
+                    // the account you are creating/editing.
+                    autoComplete="off"
+                    name="rgc-admin-email"
                     value={form.username}
                     onChange={(e) => setForm({ ...form, username: e.target.value })}
                     placeholder="name@rajagulfam.com"
@@ -416,6 +420,10 @@ export const AdminUsersPanel: React.FC<Props> = ({ currentAdminId, onSessionEnde
                   <input
                     type="password"
                     required={!editingId}
+                    // `new-password` stops the browser replaying *your* login
+                    // password into another account's credential field.
+                    autoComplete="new-password"
+                    name="rgc-admin-new-password"
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                     placeholder="Min. 8 chars, 1 letter + 1 number"
@@ -511,15 +519,17 @@ export const AdminUsersPanel: React.FC<Props> = ({ currentAdminId, onSessionEnde
 
               <form onSubmit={changePassword} className="space-y-4">
                 {([
-                  ['currentPassword', 'Current Password *', ''],
-                  ['newPassword', 'New Password *', 'Min. 8 chars, 1 letter + 1 number'],
-                  ['confirmPassword', 'Confirm New Password *', ''],
-                ] as const).map(([key, label, placeholder]) => (
+                  ['currentPassword', 'Current Password *', '', 'current-password'],
+                  ['newPassword', 'New Password *', 'Min. 8 chars, 1 letter + 1 number', 'new-password'],
+                  ['confirmPassword', 'Confirm New Password *', '', 'new-password'],
+                ] as const).map(([key, label, placeholder, autoComplete]) => (
                   <div className={fieldCls} key={key}>
                     <label className={labelCls}>{label}</label>
                     <input
                       type="password"
                       required
+                      autoComplete={autoComplete}
+                      name={`rgc-${key}`}
                       value={pwForm[key]}
                       onChange={(e) => setPwForm({ ...pwForm, [key]: e.target.value })}
                       placeholder={placeholder}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Lock, User, ShieldCheck, AlertCircle, ArrowRight, Sun, Moon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTheme } from '../../context/ThemeContext';
@@ -15,17 +15,61 @@ export const AdminLogin: React.FC<Props> = ({ onLoginSuccess, onNavigateHome }) 
   const [error, setError] = useState<string | null>(null);
   const { theme, toggleTheme } = useTheme();
 
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  // Only real user gestures count as "touched": clicks, pointer presses and
+  // keystrokes. Browser autofill fires none of these, so it can never mark the
+  // form as interacted-with.
+  const userTouchedRef = useRef(false);
+  const markTouched = () => {
+    userTouchedRef.current = true;
+  };
+
+  // Saved credentials are injected by the browser as soon as this form is
+  // rendered — sometimes in a second pass after first paint. Sweep repeatedly
+  // for a few seconds, but never after the user has taken over the form, so a
+  // password is never left sitting in plain sight and real input is never
+  // wiped.
+  useEffect(() => {
+    const clearFields = () => {
+      setUsername('');
+      setPassword('');
+      if (usernameRef.current) usernameRef.current.value = '';
+      if (passwordRef.current) passwordRef.current.value = '';
+    };
+
+    const timers = [400, 1200, 3000].map((delay) =>
+      window.setTimeout(() => {
+        if (!userTouchedRef.current) clearFields();
+      }, delay)
+    );
+
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    // Prefer React state, but fall back to what is actually in the fields:
+    // browsers can write an autofilled value straight into the DOM without
+    // emitting the events React tracks, which would leave state empty.
+    const submittedUsername = username || usernameRef.current?.value || '';
+    const submittedPassword = password || passwordRef.current?.value || '';
+
+    if (!submittedUsername || !submittedPassword) {
+      setError('Email/username and password are required.');
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username: submittedUsername, password: submittedPassword })
       });
 
       const data = await res.json();
@@ -75,7 +119,13 @@ export const AdminLogin: React.FC<Props> = ({ onLoginSuccess, onNavigateHome }) 
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          autoComplete="off"
+          onPointerDown={markTouched}
+          onKeyDown={markTouched}
+          className="space-y-4"
+        >
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
               Admin Email / Username
@@ -83,10 +133,14 @@ export const AdminLogin: React.FC<Props> = ({ onLoginSuccess, onNavigateHome }) 
             <div className="relative">
               <User className="w-4 h-4 text-slate-600 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
+                ref={usernameRef}
                 type="email"
                 required
+                name="rgc-admin-username"
+                autoComplete="off"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                onFocus={markTouched}
                 placeholder="admin@rajagulfam.com"
                 className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
@@ -100,10 +154,16 @@ export const AdminLogin: React.FC<Props> = ({ onLoginSuccess, onNavigateHome }) 
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-600 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
+                ref={passwordRef}
                 type="password"
                 required
+                name="rgc-admin-password"
+                // `new-password` tells the browser NOT to replay a saved
+                // credential into this field; we clear it on mount regardless.
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onFocus={markTouched}
                 placeholder="••••••••••••"
                 className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
